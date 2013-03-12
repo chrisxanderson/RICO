@@ -1,0 +1,5 @@
+#useDynLib(rico, .registration = TRUE, .fixes = "C_")
+useDynLib(rico)
+
+exportPattern("^[[:alpha:]]+")
+#export(getInt)          ## this fails to build

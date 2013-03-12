@@ -1,0 +1,394 @@
+\section{Simplify}
+A Rico object may represent a function whose operands are themselves Rico objects. A Rico Object then forms a \emph{parse tree}. The reference to \emph{parsing} stems from a tree of Rico objects being created in response to user interaction or user-provided algorithm. The possibility of algorithmic creation of parse trees drives the focus to expression simplification since algorithms may generate parse trees that involves tens or even tens of millions of terms.
+
+As detailed elsewhere not all forms of algebraically equivalent expressions are equally easy to evaluate numerically. As an example consider $X + XY$ where $X$ and $Y$ are mutually independent random variables. The addition operation between $X$ and $XY$ is not simple since the operands are algebraically correlated. However, the equivalent expression, $X(1+Y)$ involves the addition and multiplication of mutually independent random variables. Independent combinations of random variables tend to be easier to implement numerically than correlated combinations since there is no correlation component.
+
+Another reason for expending the design cost of creating a function that simplifies Rico parse trees is to reduce the evaluation work load. For example, an expression such as $(X+X^2)/X$ is better represented as the algebraically equivalent $1+X$. Similarly $log(exp(X))$ is better represented as $X$. While a user may not type such an expression as $log(exp(X))$, an algorithm may generate it or it may arise as an intermediate step in the simplification process itself.
+
+Rather than attempting to define a \emph{simplification} metric for all admissible expressions, the goal of this section is to demonstrate that the process called \emph{simplification} within the Rico project reliably produces algebraically equivalent output expressions for any admissible input expression and tends to produce simpler equivalent expressions. 
+
+The simplification algorithm is detailed below. It employs expression simplification heuristics that will also be detailed. A testing regimine will be detailed and the claim that the testing regimine will guarantee the claim of expression equivanence. 
+
+\subsection{Simplification Overview}
+When given an arithmetic expression in the form of a Rico object representing an expression parse tree the simplification algorithm will recursively call itself on any operand objects (also called \emph{child} objects) forming a \emph{depth-first} algorighm. This knowledge allows each step in the algorithm to assume that any operand objects are in \emph{simplest form}. The definition of \emph{simplest} in this context is itself recursive. The meaning of \emph{simplest} emerges within the simplification steps.
+
+The simplification algorithm is comprised of several stages, the first is properly called the simplifying step. The purpose of this step is to remove all integer exponents (save $1$ and $-1$) from sums of objects, recover identity operations such as $exp(log(X)) \rightarrow X$ and $X/X \rightarrow 1$, generally convert any expression to the quotient of sums of products to the extend possible. 
+
+Under certain circumstances division of polynomials may be attempted in secondary stages of simplification. A conditional last stage of simplification is factoring of common terms.
+
+Another motivating example is,
+
+\begin{align*}
+\frac{(x+2)^2 +1}{x^2 + 4x + 5} \rightarrow 1
+\end{align*}
+
+The components to the simplification algorithm are described below with the lowest order first.
+
+\subsection{Rico Objects}
+
+Before expression simplification is attempted the admissible expressions must be detailed. For the most part Rico creates it's parse tree as numerical operations are encountered. If, for example, the user directs Rico to form the square root of a Rico object, the result is a square root object with the starting object as the sole operand. The process is similar for log, exp, subtraction, division, etc. The exceptions are addition, multiplication and exponentiation (or power).
+
+There are three basic kinds of Rico objects to consider during simplification; NaN, numeric, and non-numeric where \emph{NaN} stands for not-a-number. A NaN Rico object arises to indicate a result is undefined such as 0/0, etc. A numeric Rico object is one of the allowed numeric types such as integers, floating point values and fractions (of integers). A non-numeric Rico object represents either a built-in random variable or a function of Rico objects whose result is not numeric and well defined (not NaN). 
+
+It is convenient to use compact symbols to represent the three kinds of Rico objects,
+
+\begin{align*}
+\phi &\text{ is a NaN Rico object}\\
+\nu  &\text{ is a numeric Rico object}\\
+\rho &\text{ is a non-numeric Rico object}
+\end{align*}
+
+and capital letters such as $X$, near end of alphabet represent generic Rico objects.
+
+\subsubsection{Simplify Negate}
+
+The negation simplifier accepts one operand and obeys the following rules,
+
+\begin{align*}
+-\{\phi\}          &\rightarrow \phi\\
+-\{\nu\}           &\rightarrow -\nu\\\
+-\{\nu \times X\}  &\rightarrow \{-\nu\} \times X\\
+-\{X\}             &\rightarrow \{-1\} \times X
+\end{align*}
+
+The $-\{\nu \times X\}$ rule allows number objects to absorb the negation operation. The last rule replaces the negation operation with the product of $X$ and $-1$, in the conventional number-first order.
+
+\subsubsection{Rico Addition}
+
+The Rico addition object accepts two or more operands. There are four cases for each operand, 
+
+\begin{align*}
+\{\phi, 0, \nu, \rho\}
+\end{align*}
+
+where it is understood that a rule that applies to zero is selected before a generic number $\nu$ and $X$ applies to any Rico object. Since the rules are applied in order the specific $\rho$ symbol tends not to appear. Rather, the generic $X$ (and subsequent generics) appear most often.
+
+Several features are accommodated in the following rules,
+
+\begin{enumerate}
+\item Propagate $NaN$ values
+\item Discard zeros
+\item Perform numeric addition
+\item Ensure number objects appear in first position in list of operands
+\item Perform coefficient addition
+\item Collapse cascaded addition operations
+\end{enumerate}
+
+These rules may be encoded as if there are only two operands as follows,
+
+\begin{align*}
+\phi + X                   &\rightarrow \phi\\
+X + \phi                   &\rightarrow \phi\\
+X + 0                      &\rightarrow X\\
+0 + X                      &\rightarrow X\\
+\nu_1 + \nu_2              &\rightarrow \{\nu_1+\nu_2\}\\
+X + \nu                    &\rightarrow n + X\\
+\nu_1 \times X + \nu_2 \times X  &\rightarrow \{\nu_1 + \nu_2\} \times X\\
+X + (Y + Z)                &\rightarrow X + Y + Z\\
+(X + Y) + Z                &\rightarrow X + Y + Z\\
+X + Y                      &\rightarrow X + Y
+\end{align*}
+
+When there are more than two operands the behaviour is as if an accumulation of two-operand addition operations, i.e. $(X+Y+Z) = ((X+Y)+Z)$.
+
+\subsubsection{Rico Multiplication}
+Within Rico multiplication is handled in a similar manner to addition. Cascades products are flattened, zeros and NaN's dominate expressions and ones are filtered out. The rules are then,
+
+\begin{align*}
+NaN*Y             &\rightarrow NaN\\
+X*NaN             &\rightarrow NaN\\
+X*0               &\rightarrow 0\\
+0*Y               &\rightarrow 0\\
+X*1               &\rightarrow X\\
+1*Y               &\rightarrow Y\\
+(X*Y)*Z           &\rightarrow X*Y*Z\\
+X*(Y*Z)           &\rightarrow X*Y*Z\\
+(X*Y)*(Z*K)       &\rightarrow X*Y*Z*K
+\end{align*}
+
+As in the addition case the $NaN$ dominates the output of any function. Like the $NaN$ value, zero dominates the multiplication output. Note in particular that $NaN$ dominates zero. The next two rules involving one are the equivalent nullification as the zero is for addition. The last three rules detail the expression flattening of cascaded products. 
+
+\subsubsection{Rico Power}
+
+The Power function, $X^Y$, requires more care so it doesn't provide any automatic flattening of cascaded powers as addition and multiplication do provide. There are still the automatically applied rules for $NaN$, $0$ and $1$,
+
+\begin{align*}
+X^{NaN}                        &\rightarrow NaN\\
+{NaN}^Y                       &\rightarrow NaN\\
+{NaN}^{NaN}                    &\rightarrow NaN\\
+(X1 + \dots +X3)^n            &\rightarrow X1^n + \dots + X3^n\\
+(X1 \times \dots \times X3)^Y &\rightarrow X1^Y \times \dots \times X3^Y\\
+(X^Y)^Z                       &\rightarrow X^{Y \times Z}\\
+exp(X)^Y                      &\rightarrow exp(X \times Y)\\
+{n1}^{n2}                      &\rightarrow n3\\
+X^0                           &\rightarrow 1\\
+X^1                           &\rightarrow X
+\end{align*}
+
+The ${n1}^{n2} \rightarrow n3$ rule is triggered when both operands are numeric values and the rule says to evaluate these two operands into a single numeric value, possibly $Nan$. The numeric power rule is detailed below.
+
+The rule $(X1+X2+...+X3)^n \rightarrow X1^n + ... + A3^n$ assumes an integer exponent. The distributive law is them applied so that the result is a sum of powers. 
+
+The rule $(X1 \times \dots \times X3)^Y \rightarrow X1^Y \times \dots \times X3^Y$ distributes powers over each product operand. This rule is in keeping with the overall strategy of exploring legal interactions bewteen operands. A later factoring step for exponents will recover the original form if possible.
+
+The rule $X^0 \rightarrow 1$ presumes that $X$ is non-numeric. This is no guarantee that $X$ does not represent a random variable with non-zero probability concentrated at zero or either infinity. This rule will need to be revisited when discrete random variables are introduced. Doubtless this rule will be removed at that point.
+
+\subsubsection{Rico Numeric Power}
+
+The special case results of the power evaluation of two numeric values are detailed in table XXX.
+
+\vspace{.1 in}
+\begin{tabular}{|c|cccccl||}
+\hline
+$x^y$     & $0$   & $1$       & $+\infty$ & $-\infty$  & $NaN$ & $d2$\\
+\hline \hline
+$0$       & $NaN$ & $0$       & $0$       & $NaN$      & $NaN$ & $\{NaN, 0\}    \sim \{-,+\}$\\
+$1$       & $1$   & $1$       & $NaN$     & $NaN$      & $NaN$ & $1$ \\
+$+\infty$ & $NaN$ & $+\infty$ & $NaN$     & $NaN$      & $NaN$ & $\{0, +\infty\} \sim \{-,+\}$\\
+$-\infty$ & $NaN$ & $NaN$     & $NaN$     & $NaN$      & $NaN$ & $\{0, -\infty\} \sim \{-,+\}$\\
+$NaN$     & $NaN$ & $NaN$     & $NaN$     & $NaN$      & $NaN$ & $NaN$ \\
+$d1$      & $1$   & $x$       & $sgn(d1) \infty$ & $0$ & $NaN$ & ${d1}^{d2}$ \\
+\hline
+\end{tabular}
+
+The expression $\{0, -\infty\} \sim \{-,+\}$ in the last column means that $0$ is chosen if $d2 < 0$ else $-\infty$ is chosen. There is no possibility for $d2$ to be zero since that case is already addressed.
+
+\subsubsection{Equality Test}
+
+Several parts of the simplification algorithm rely on the ability to compare two objects for equality. Two Rico objects are \emph{equivalent} if they are of the same Rico type and if they have child objects (operands for functional objects) then, modulo order in the case of addition and multiplication, those child objects are also equivalent.
+
+The following Rico objects (expressions) are then equivalent,
+
+\begin{align*}
+X+Y+3 &\equiv 3 + X + Y\\
+X*5 &\equiv 5X
+\end{align*}
+
+but many algebraically equivalent expressions are not equivalent in the Rico sense. For example,
+
+\begin{align*}
+(X+2)^2 + 1 &\neq X^2 + 4X + 5
+\end{align*}
+
+Note especially that Basic random variables are a special type of Rico object. Basic random variables are issued a unique id code upon creation and two Basic random variables are distinguished by id code, not random variable type. For example if $X = Normal(2,3)$ and $Y = Normal(2,3)$, then $X \equiv Y$ iff $id(X) = id(Y)$. 
+
+Rico Numbers are equivalent if they represent identical values. Floating point Numbers are equivalent if they are within a specific numerical tolerance to compensate for minor least significant bit differences. Fractions in Rico are easily compared by comparing their integer numerator and denominator since they are always represented in lowest form with the numerator carrying the signed value.
+
+\subsection{Simplify Stage One}
+
+Stage One of the simplify algorithm is depth-first. At each node Stage One of the simplify algorithm is called and upon return a transformation appropriate to the current object is called. If the current object is a function and therefore has child objects (operands) then they are assumed to have already been Stage One simplified.
+
+The Stage One object simplifications are detailed by object type. Many simplifications build on each other. 
+
+\subsubsection{Simplify Subtract}
+
+The subtration function in Rico accepts exactly two operands. The Stage One simplification is to transform subtration to addition as follows,
+
+\begin{align*}
+A - B \rightarrow A + \{-1\}*B
+\end{align*}
+
+The end result is that a Stage One simplified expression contains no subtraction functions.
+
+\subsubsection{Simplify Division}
+
+Analagously to the subtraction function, the division function is transformed as,
+
+\begin{align*}
+A \div B \rightarrow A * B^{-1}
+\end{align*}
+
+\subsubsection{Simplify Square Root}
+
+Building on the division function transformation there is replacement of the square root function,
+
+\begin{align*}
+\sqrt{A} \rightarrow A^{\frac{1}{2}}
+\end{align*}
+
+\subsubsection{Simplify Log}
+
+The Stage One simplification huristic is to turn products of sums to sums of products. This extends to the following transformation rules,
+
+\begin{align*}
+log(exp(X)) &\rightarrow A\\
+log(X^Y)    &\rightarrow Y*log(X)\\
+log(X*Y*Z)  &\rightarrow log(X)+log(Y)+log(Z)
+\end{align*}
+
+In this way, multiplication within a function is exposed outside as addition. 
+
+\subsubsection{Simplify Exp}
+
+By similar reasoning to Stage One log simplification the exp rules are,
+
+\begin{align*}
+exp(log(X)) &\rightarrow A
+exp(X+Y+Z)  &\rightarrow exp(X)*exp(Y)*exp(Z)
+\end{align*}
+
+In this way, addition within a function is exposed outside as multiplication. 
+
+\subsubsection{Simplify Addition}
+
+A Rico addition object may contain two or more operand objects. The hallmark transformation at this stage is,
+
+\begin{align*}
+3X + X \rightarrow 4X
+\end{align*}
+
+Notice that $3X$ is a multiplication object that contains a number object as an operand. It is assumed that the Stage One Multiply simplification has already occurred and that this multiplication object contains zero or one number object operands and furthermore if a number object is present it is the first operand in the list of operands. A further consideration is seen in the following transformation,
+
+\begin{align*}
+3XY + X + YX \rightarrow 4XY + X
+\end{align*}
+
+The number object ($3$) in the above expression is commonly referred to as the coefficient of the expression. This coefficient must be split from the three operand multiply object into a number object and a two operand multiply object. The latter is referred to as the \emph{base} object. Unique base objects is must be identified and the coefficients of any duplicated base objects are summed. Two related special cases are addressed as follows,
+
+\begin{align*}
+2XY + X + -2XY &\rightarrow X\\
+2XY + -2XY     &\rightarrow 0
+\end{align*}
+
+\subsubsection{Simplify Multiplication}
+
+Multiplication simplification returns $NaN$ if any openand is of type $NaN$. The distributive law is then applied, as needed, and the result is a sum of Stage One simplified products.
+
+\begin{align*}
+X \times NaN   &\rightarrow NaN \\
+NaN \times Y   &\rightarrow NaN \\
+NaN \times NaN &\rightarrow NaN\\
+(X+Y) \times Z &\rightarrow XZ + YZ\\
+X \times (Y+Z) &\rightarrow XY + XZ\\
+X^Y \times X^Z &\rightarrow X^{Y+Z}\\
+n1 \times n2  &\rightarrow n3\\
+(X \times Y) \times (Y \times Z) &\rightarrow XY^2Z
+\end{align*}
+
+The last term applies to an operand that is itself a product of an arbitrary number of operands. For example,
+
+\begin{align*}
+(X \times 2 \times Y) \times (Y \times Z) &\rightarrow 2XY^2Z
+\end{align*}
+
+\subsection{Simplify Stage Two}
+
+\todo{This needs to be fleshed out. First the StageOne Simplify needs to be completed.}
+
+\subsubsection{Factoring}
+The Factor tree operation is depth-first. It acts at addition nodes to factor out common nodes from sums of products of nodes. Two example transformations are,
+
+\begin{align*}
+AB + AC + D         &\rightarrow  A(B+C) + D\\
+5A + 5^2AB + 5^3ABC &\rightarrow  5A(1 + 5B(1 + 5C))
+\end{align*}
+
+where the juxtaposition implies multiplication of the separate nodes $A, B, C$. The first transformation demonstrates that the $A$ node need not be common to all products. The second transformation comes from the concept of Net Present Value.
+
+\todo{Define what happens to fractional powers}
+
+The expression $AB + AC + BC$ may be factored as $A(B+C) + BC$ or $B(A+C) + AC$ demonstrating that factorization is not uniquely defined. The Factor tree operation is implemented using a \emph{sparse product matrix}. 
+
+An example without non-unit exponential is first considered. Given the expression,
+
+\begin{align*}
+AB + AC + D
+\end{align*}
+
+A list of uniqe nodes is constructed; $\{A, B, C, D\}$. Using this list to define the columns referred to as a \emph{header}, a sparse matrix of powers is constructed where each row represents a product of header elements and the rows collectively represent the sum of products. The sparse product matrix for this example is then,
+
+\begin{align*}
+\begin{pmatrix}A & B & C & D\\1 & 1 & &\\1 & & 1 &\\& & & 1\end{pmatrix}
+\end{align*}
+
+The $A$ is most common element since it appears in more rows than any other header element it is chosen as the factored element. If another header element, say $B$ had been as common as $A$ then the powers of $A$ and $B$ would be summed and the greater chosen as the factored element. If a tie persist then the first of the tied element in the header list is chosen.
+
+To factor out the $A$, the sparse matrix rows are partitioned into those including the $A$ element and not. Two new sparse product matrices are created. It is convenient that the headers of each are simple copies of the original header $\{A, B, C, D\}$. Since the matrices are sparse there is no computational cost beyond a possible header copy operation. The resulting expression may be written as,
+
+\begin{align*}
+  \begin{pmatrix}A & B & C & D\\
+                 1 & 1 &   &  \\
+                 1 &   & 1 &\end{pmatrix} 
++ \begin{pmatrix}A & B & C & D\\
+                   &   &   & 1 \end{pmatrix}
+\end{align*}
+
+The $A$ expression is now formally factored out and for a reason that will be made clear below zeros are left in the $A$ column of the first matrix,
+
+\begin{align*}
+A \times\begin{pmatrix}A & B & C & D\\
+                       0 & 1 &   &  \\
+                       0 &   & 1 &\end{pmatrix} 
++       \begin{pmatrix}A & B & C & D\\
+                       &   &   & 1 \end{pmatrix}
+\end{align*}
+
+The Factor operation recurses until no further factoring is possible as is the case in the example above for both sparse product matrices. The resulting expression is then,
+
+\begin{align*}
+A \times (B + C) + D
+\end{align*}
+
+To introduce further considerations a second example is warrented. Consider the expression,
+
+\begin{align*}
+5A + 5^2AB + 5^3ABC
+\end{align*}
+
+The corresponding sparse matrix is,
+
+\begin{align*}
+\begin{pmatrix}5 & A & B & C\\
+               1 & 1 &   &  \\
+               2 & 1 & 1 &  \\
+               3 & 1 & 1 & 1\end{pmatrix}
+\end{align*}
+
+The $5$ and the $A$ are equally common and the tie is broken by the sum of powers which is $6$ for the $5$ node and only $3$ for the $A$ node. The $5$ is then factored, but instead of creating two sparse product matrices only one needs be created since the $5$ appears in all rows and the expression becomes,
+
+\begin{align*}
+5 \times \begin{pmatrix}5 & A & B & C\\
+                        0 & 1 &   &  \\
+                        1 & 1 & 1 &  \\
+                        2 & 1 & 1 & 1\end{pmatrix}
+\end{align*}
+
+Since the $A$ is now most common it is factored and only one sparse product matrix results again,
+
+\begin{align*}
+5 \times A \times \begin{pmatrix}5 & A & B & C\\
+                                 0 & 0 &   &  \\
+                                 1 & 0 & 1 &  \\
+                                 2 & 0 & 1 & 1\end{pmatrix}
+\end{align*}
+
+Now $5$ and $B$ are most common, but $5$ has more power. Now the reason for the zero's becomes clear because we must leave a one in the place of the first row,
+
+\begin{align*}
+5 \times A \times \Big(
+\begin{pmatrix}5 & A & B & C\\
+               0 & 0 &   &  \end{pmatrix}
++
+\begin{pmatrix}5 & A & B & C\\
+               1 & 0 & 1 &  \\
+               2 & 0 & 1 & 1\end{pmatrix}
+\Big)
+\end{align*}
+
+The zero row of the first matrix resolves to a one and the $5$ of the second matrix is factored,
+
+\begin{align*}
+5 \times A \times \Big(1 
++ 5 \times 
+\begin{pmatrix}5 & A & B & C\\
+               0 & 0 & 1 &  \\
+               1 & 0 & 1 & 1\end{pmatrix}
+\Big)
+\end{align*}
+
+Next the $B$ is factored and the matrices can be replaced by their equivalent expressions with juxtaposition in place of multiplication,
+
+\begin{align*}
+5A \Big(1 + 5B(1 + 5C)\Big)
+\end{align*}
+

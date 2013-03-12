@@ -1,0 +1,25 @@
+\contentsline {chapter}{\numberline {1}Introduction}{6}
+\contentsline {section}{\numberline {1.1}Introduction}{6}
+\contentsline {subsection}{\numberline {1.1.1}A Basic Model}{7}
+\contentsline {chapter}{\numberline {2}Numeric Computation}{11}
+\contentsline {section}{\numberline {2.1}Numeric Representation}{11}
+\contentsline {section}{\numberline {2.2}Correlation}{15}
+\contentsline {chapter}{\numberline {3}Correlated Operations}{20}
+\contentsline {subsection}{\numberline {3.0.1}Discrete Operations on Correlated Random Variables}{20}
+\contentsline {subsection}{\numberline {3.0.2}Continous Operations on Correlated Random Variables}{23}
+\contentsline {subsection}{\numberline {3.0.3}Mixed Discrete / Continuous Operations on Correlated Random Variables}{24}
+\contentsline {subsection}{\numberline {3.0.4}Operations on Correlated Mixed Random Variables}{24}
+\contentsline {chapter}{\numberline {4}Constrained Optimization}{29}
+\contentsline {section}{\numberline {4.1}Tables and Chairs with Correlated Random Prices}{29}
+\contentsline {subsection}{\numberline {4.1.1}Finding the Joint Price Distribution from the Demand Inputs}{39}
+\contentsline {subsection}{\numberline {4.1.2}Tables and Chairs with Unknowns Prices and Resources}{46}
+\contentsline {section}{\numberline {4.2}Beyond the Tables and Chairs Example}{49}
+\contentsline {chapter}{\numberline {5}Black Scholes Construction}{51}
+\contentsline {section}{\numberline {5.1}Black Scholes Construction}{51}
+\contentsline {subsection}{\numberline {5.1.1}Geometric Black-Scholes Pricing}{56}
+\contentsline {subsection}{\numberline {5.1.2}Portfolio Construction}{60}
+\contentsline {subsection}{\numberline {5.1.3}Black Scholes Construction: SPY Example}{62}
+\contentsline {chapter}{\numberline {A}Tables and Chairs, Sharply}{68}
+\contentsline {section}{\numberline {A.1}An Exemplary 2D Sharp Example}{68}
+\contentsline {subsection}{\numberline {A.1.1}Tables and Chairs with All Inputs Sharp and Known}{69}
+\contentsline {subsection}{\numberline {A.1.2}Tables and Chairs with Unknown Prices}{73}

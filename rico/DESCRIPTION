@@ -1,0 +1,12 @@
+Package: rico
+Title: Random Input Correlated Output
+Version: 0.1
+Date: 2012-07-19
+Author: Tom Fielden
+Maintainer: Tom Fielden <tom@tomfielden.com>
+Description: Introduces the random variable as a computation object. Allows all basic
+	     mathematical operations and conditional statements. Intended for use either
+	     directly or as subtitutions for data inputs to an algorithmic calculation.
+License: GPL-2
+LazyLoad: yes
+Depends: R (>= 2.15)

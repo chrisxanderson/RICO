@@ -1,0 +1,57 @@
+\begin{thebibliography}{10}
+
+\bibitem{bellman03}
+Richard Bellman.
+\newblock {\em Dynamic Programming}.
+\newblock Dover Publications, Inc., 2003.
+
+\bibitem{bickel01}
+Peter Bickel and Kjell Doksum.
+\newblock {\em Mathematical Statistics Vol. 1, 2nd ed.}
+\newblock Prentice Hall, 2001.
+
+\bibitem{boyd04}
+Stephen Boyd and Lieven Vandenberghe.
+\newblock {\em Convex Optimization}.
+\newblock Cambridge University Press, 2004.
+
+\bibitem{corman09}
+Thomas~H. Cormen, Charles~E. Leiserson, Ronald~L. Rivest, and Clifford Stein.
+\newblock {\em Introduction to Algorithms, Third Edition}.
+\newblock MIT Press, 2009.
+
+\bibitem{dineen00}
+Sean Dineen.
+\newblock {\em Probability Theory in Finance: A Mathematical Guide to the
+  Black-Scholes Formula}.
+\newblock Americal Mathematic Society, 2000.
+
+\bibitem{fielden12}
+Thomas~Robert Fielden.
+\newblock {\em Modeling Market and Regulatory Mechanisms for Pollution
+  Abatement with Sharp and Random Variables}.
+\newblock PhD thesis, Portland State University, 2012.
+
+\bibitem{gass75}
+Saul~I. Gass.
+\newblock {\em Linear Programming Methods and Applications 4th ed.}
+\newblock McGraw-Hill Book Company, 1975.
+
+\bibitem{greenberg95}
+Harvey~J. Greenberg.
+\newblock Mathematical programming models for environmental quality control.
+\newblock {\em Operations Research}, 43(4):578--622, 1995.
+
+\bibitem{nolan13}
+J.~P. Nolan.
+\newblock {\em Stable Distributions - Models for Heavy Tailed Data}.
+\newblock Birkhauser, Boston, 2013.
+\newblock In progress, Chapter 1 online at
+  academic2.american.edu/$\sim$jpnolan.
+
+\bibitem{tanner96}
+Martin~A. Tanner.
+\newblock {\em Tools for Statistical Inference, 3rd ed.}
+\newblock Springer, 1996.
+
+\end{thebibliography}

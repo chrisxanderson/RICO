@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="612pt"
+   height="792pt"
+   id="svg7346"
+   version="1.1"
+   inkscape:version="0.48.3.1 r9886"
+   sodipodi:docname="tc_joint_prices.svg">
+  <defs
+     id="defs7348">
+    <inkscape:perspective
+       sodipodi:type="inkscape:persp3d"
+       inkscape:vp_x="0 : 495 : 1"
+       inkscape:vp_y="0 : 1000 : 0"
+       inkscape:vp_z="765 : 495 : 1"
+       inkscape:persp3d-origin="382.5 : 330 : 1"
+       id="perspective7355" />
+  </defs>
+  <sodipodi:namedview
+     inkscape:document-units="in"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0.0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="0.94687963"
+     inkscape:cx="312.69429"
+     inkscape:cy="792.02347"
+     inkscape:current-layer="layer1"
+     id="namedview7350"
+     showgrid="true"
+     inkscape:snap-grids="false"
+     inkscape:window-width="1301"
+     inkscape:window-height="744"
+     inkscape:window-x="65"
+     inkscape:window-y="24"
+     inkscape:window-maximized="1">
+    <inkscape:grid
+       type="xygrid"
+       id="grid7357"
+       empspacing="5"
+       visible="true"
+       enabled="true"
+       snapvisiblegridlinesonly="true"
+       spacingx="10px"
+       spacingy="10px" />
+  </sodipodi:namedview>
+  <metadata
+     id="metadata7352">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title />
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <path
+       style="fill:#b3b3b3;stroke:none"
+       d="m 102.5011,304.87377 88.44563,0 84.6564,-21.1641 56.4376,-84.6564 -70.547,0 -158.99263,105.8205 z"
+       id="path7887"
+       sodipodi:nodetypes="cccccc" />
+    <path
+       style="fill:#e6e6e6;stroke:none"
+       d="m 190.94673,304.87377 c 70.547,0 70.547,0 70.547,0 l 14.1094,-21.1641 -84.6564,21.1641 z"
+       id="path7885" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.70546997px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+       d="m 102.5011,305.07786 158.99263,-0.20409 70.547,-105.8205 -176.3675,0 -53.17213,106.02459 z"
+       id="path7363"
+       sodipodi:nodetypes="ccccc" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.70546997px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+       d="m 49.852735,163.77977 0,176.3675 317.461495,0"
+       id="path7359"
+       sodipodi:nodetypes="ccc" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+       d="M 450,240 50,340 351.08984,139.27344"
+       id="path7361"
+       sodipodi:nodetypes="ccc" />
+    <text
+       xml:space="preserve"
+       style="font-size:20px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-align:start;line-height:100%;writing-mode:lr-tb;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;font-family:Times New Roman;-inkscape-font-specification:'Times New Roman,'"
+       x="380.39926"
+       y="344.74396"
+       id="text7877"
+       sodipodi:linespacing="100%"><tspan
+         sodipodi:role="line"
+         id="tspan7879"
+         x="380.39926"
+         y="344.74396"
+         dy="0 10.561005">Pt</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:20px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-align:start;line-height:100%;writing-mode:lr-tb;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;font-family:Times New Roman;-inkscape-font-specification:'Times New Roman,'"
+       x="29.132734"
+       y="150.38097"
+       id="text7881"
+       sodipodi:linespacing="100%"><tspan
+         sodipodi:role="line"
+         id="tspan7883"
+         x="29.132734"
+         y="150.38097"
+         dy="0 10.561005">Pc</tspan></text>
+    <path
+       style="fill:#808080;stroke:none"
+       d="m 102.81758,304.65672 158.67615,-105.60345 -105.8205,0 -52.85565,105.60345 z"
+       id="path7889"
+       sodipodi:nodetypes="cccc" />
+    <rect
+       style="fill:#ffffff;fill-opacity:1;stroke:none"
+       id="rect8052"
+       width="115.11495"
+       height="104.55395"
+       x="351.68146"
+       y="179.97095" />
+    <text
+       xml:space="preserve"
+       style="font-size:20px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-align:start;line-height:100%;writing-mode:lr-tb;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;font-family:Times New Roman;-inkscape-font-specification:'Times New Roman,'"
+       x="362.24246"
+       y="134.55862"
+       id="text8054"
+       sodipodi:linespacing="100%"><tspan
+         sodipodi:role="line"
+         id="tspan8056"
+         x="362.24246"
+         y="134.55862"
+         dy="0 10.561005 -10.561005 0 0 0 0 0 0 10.561005">Pc = 2/3Pt</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:20px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-align:start;line-height:100%;writing-mode:lr-tb;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;font-family:Times New Roman;-inkscape-font-specification:'Times New Roman,'"
+       x="362.24246"
+       y="262.3468"
+       id="text8058"
+       sodipodi:linespacing="100%"><tspan
+         sodipodi:role="line"
+         id="tspan8060"
+         x="362.24246"
+         y="262.3468"
+         dy="0 10.561005 -10.561005 0 0 0 0 0 0 10.561005">Pc = 1/4Pt</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:20px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-align:start;line-height:100%;writing-mode:lr-tb;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;font-family:Times New Roman;-inkscape-font-specification:'Times New Roman,'"
+       x="164.75166"
+       y="232.77599"
+       id="text8062"
+       sodipodi:linespacing="100%"><tspan
+         sodipodi:role="line"
+         id="tspan8064"
+         x="164.75166"
+         y="232.77599">A</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:20px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-align:start;line-height:100%;writing-mode:lr-tb;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;font-family:Times New Roman;-inkscape-font-specification:'Times New Roman,'"
+       x="222.8372"
+       y="270.79559"
+       id="text8066"
+       sodipodi:linespacing="100%"><tspan
+         sodipodi:role="line"
+         id="tspan8068"
+         x="222.8372"
+         y="270.79559">B</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:20px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-align:start;line-height:100%;writing-mode:lr-tb;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;font-family:Times New Roman;-inkscape-font-specification:'Times New Roman,'"
+       x="240.79089"
+       y="324.20792"
+       id="text8070"
+       sodipodi:linespacing="100%"><tspan
+         sodipodi:role="line"
+         id="tspan8072"
+         x="240.79089"
+         y="324.20792">C</tspan></text>
+  </g>
+</svg>

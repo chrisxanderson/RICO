@@ -1,0 +1,51 @@
+TODO - Update expression printing to renumber id-codes from Xi to X,Y,Z, then X1,X2,... for 4+
+^^^ 12/19/12
+TODO - Write tests for RicoNumber::Pow, especially corner cases
+^^^ 12/13/12
+DONE - Flesh out: RicoNumber::Power
+^^^ 12/06/12
+TODO - Make sure the number appears first in a sum and a product.
+^^^ 12/04/12
+TODO - Write tests for Double+Double and Double*Double
+^^^ 11/29/12
+DONE - Move to a static implementation for RicoSimplifyVisitor
+DONE - Change the name from RicoSimplifyVisitor to RicoSimplify
+^^^ 11/20/12
+DONE - Created separate registry for BasicRV's and R interface. BasicRV's automatically registered.
+DONE - The collectBasicRVs() should pass set<RicoID> and therefore not need "This" RicoPtr.
+DONE - Replace 'RicoPtr Wrt" with "RicoID Wrt" where RicoID is an int for now.
+^^^^ 11/13/12
+DONE - The RicoSumProduct::getExpression needs to build an expression, not just write one.
+DONE - RicoSumProduct ctor needs to avoid iiMap copy.
+^^^^ 11/08/12
+DONE - Wrap RicoPtr around all new calls by creating static Rico::XX(...)
+^^^^ 11/08/12
+TODO - Decide if we have achieved a canonical expression form using Simplify rules.
+DONE - Reduced Fraction on Create.
+DONT - Create Copy Constructor for Rico
+^^^^ 11/06/12
+DONE - Consider replacing vector<RicoPtr> with list<RicoPtr> for operands. Called vRicoPtr.
+DONT - Introduce Triple as a template. Triple<T>
+DONE - Update Pair to be a STL std::pair<T> 
+^^^^ 11/05/12
+TODO - Auto build UnitTest++ (if library missing.)
+TODO - Autogenerate source code dependency information
+^^^^ 10/30/12
+DONE - Re-introduce testing.
+DONE - replace boost::shared_ptr with erich::smart_ptr
+DONE - Fix the compile dependency deficiency
+^^^^ 10/22/12
+DONE - Introduce Smart Pointers for Rico objects. Pass RicoPtr instead of Rico*
+DONE - Move testing code to TestRico.cpp instead of CreateRico.cpp.
+^^^^ 10/16/12
+DONE - Consider replacing Rico* with Rico&
+DONE - Ensure that ~Rico::delete works correctly.
+DONE - Create copy-constructors for all Rico objects except BasicRV's?
+DONE - Make sure remaining object compute derivatives. All derivatives computable.
+DONE - Introduce Sqrt() function. Only took 15 minutes.
+^^^^ 10/12/12
+DONE - Consider bottom-up expresion simplifier.
+DONE - Issue Rico.id on demand from R/C-interface only.
+TODO - Save the world.
+DONE - Create TODO list.
+^^^^ 10/11/12 ^^^^ Bottom of List --- New items on top. --------------------------

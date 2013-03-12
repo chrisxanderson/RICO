@@ -1,0 +1,175 @@
+%% right-side equation numbering, 12 point font, print one-sided 
+%\documentclass[reqno,12pt,oneside]{report} 
+\documentclass[12pt,letterpaper,oneside]{book}
+
+% Use my personal style sheet
+%\usepackage{tomf}         
+
+\usepackage{color}
+\usepackage{times}
+\usepackage{amsmath,amsfonts,amssymb}
+\usepackage{amsthm}   % for theorems
+%\usepackage{graphics}
+\usepackage{graphicx} % This is preferred. %> convert image.png image.eps
+\usepackage{comment}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Various theorem environments. All of the following have the same numbering
+% system as theorem.
+
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{prop}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{question}[theorem]{Question}
+\newtheorem{conjecture}[theorem]{Conjecture}
+\newtheorem{assumption}[theorem]{Assumption}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{notation}[theorem]{Notation}
+\newtheorem{condition}[theorem]{Condition}
+\newtheorem{example}[theorem]{Example}
+\newtheorem{introduction}[theorem]{Introduction}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+% Numbers theorems "x.y" where x is the section number, y is the theorem number
+\numberwithin{theorem}{chapter}     
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\usepackage{listings}
+
+\definecolor{dkgreen}{rgb}{0,0.6,0}
+\definecolor{gray}{rgb}{0.5,0.5,0.5}
+\definecolor{mauve}{rgb}{0.58,0,0.82}
+
+\lstset{ 
+  backgroundcolor=\color{white},  % choose the background color; \usepackage{[x]color} 
+  basicstyle=\footnotesize\ttfamily,       % the size of the fonts that are used for the code
+  breakatwhitespace=false,        % sets if automatic breaks should only happen at whitespace
+  breaklines=true,                % sets automatic line breaking
+  captionpos=b,                   % sets the caption-position to bottom
+  commentstyle=\color{dkgreen},   % comment style
+  deletekeywords={...},           % if you want to delete keywords from the given language
+  escapeinside={\%*}{*)},         % if you want to add LaTeX within your code
+  %extendedchar=true,              % lets you use non-ASCII characters; for 8-bits encodings
+  frame=single,                   % adds a frame around the code
+  keywordstyle=\color{blue},      % keyword style
+  language=Python,                % the language of the code
+  morekeywords={*,...},           % if you want to add more keywords to the set
+  numbers=none,                   % location of line-numbers; (none, left, right)
+  numbersep=5pt,                  % how far the line-numbers are from the code
+  numberstyle=\tiny\color{gray},  % the style that is used for the line-numbers
+  rulecolor=\color{black},        % if not set, the frame-color may be changed on line-breaks  
+  showstringspaces=false,         % underline spaces within strings only
+  showtabs=false,                 % show tabs within strings adding particular underscores
+  stepnumber=2,                   % the step between two line-numbers. If 1, each line numbered
+  stringstyle=\color{mauve},      % string literal style
+  tabsize=2,                      % sets default tabsize to 2 spaces
+  title=\lstname                  % show the filename of files included with \lstinputlisting; 
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\usepackage{tikz}
+\usetikzlibrary{shapes}
+\newcommand*\circled[1]{\tikz[baseline=(char.base)]{
+            \node[shape=circle,draw,inner sep=2pt] (char) {#1};}}
+\newcommand*\squared[1]{\tikz[baseline=(char.base)]{
+            \node[shape=rectangle,draw,inner sep=4pt] (char) {#1};}}
+\newcommand*\triangled[1]{\tikz[baseline=(char.base)]{
+            \node[shape=regular polygon,regular polygon sides=3,draw,inner sep=0pt] (char) {#1};}}
+%% Example: \circled{1} \squared{2} \triangled{3}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% This command creates a box marked ``To Do'' around text.
+%% To use type \todo{  insert text here  }.
+
+\newcommand{\todo}[1]{\vspace{5 mm}\par \noindent
+\marginpar{\textsc{To Do}}
+\framebox{\begin{minipage}[c]{0.95 \textwidth}
+\tt\begin{center} #1 \end{center}\end{minipage}}\vspace{5 mm}\par}
+
+\def\startabstractpage#1{% This formats the optional in-dissertation abstract - jg
+ \newpage
+ \setcounter{page}{1}   % -- begin with "i" TRF
+ \addcontentsline{toc}{chapter}{ABSTRACT}
+ \@restonecolfalse\if@twocolumn\@restonecoltrue\onecolumn\fi
+ \hbox{ }
+ \twoinmar
+ \centerline{ABSTRACT}
+ \vspace{0.4in}
+ \noindent #1
+ \vspace{0.25in}\\
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin {document}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Page numbering. If you don't include a frontispiece or copyright
+% page, you'll need to change this for two-sided printing.
+\makeatletter
+\if@twoside \setcounter{page}{4} \else \setcounter{page}{1} \fi
+\makeatother
+
+% Abstract
+%\startabstractpage{\input{abstract}}
+
+% Table of contents, list of figures, etc.
+%\tableofcontents     % Required
+%\listoftables        % Required if there is more than one table
+%\listoffigures       % Required if there is more than one figure
+%\listofmaps          % Required if there is more than one map
+%\listofappendices    % Required if there is more than one appendix
+%\listofabbreviations % Optional. Abbreviations should be stored in a file named abbr.tex
+
+% Optional in-dissertation Abstract Page
+%\startabstractpage{The Title of Your Dissertation}{Your Name}{Chair: Albert Einstein}
+%\input{Abstract/Abstract}
+%\label{Abstract}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%\startthechapters 
+% The individual files for each of the chapters are put here.
+% Save each chapter of your thesis to a seperate tex file
+% and then use the \input command to include this file in your
+% thesis.  For instance you can save a file to "intro.tex" and 
+% then type \input{intro}. 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% use \input   for non-page-break % and \include for page-break
+
+%\chapter{Introduction}
+%\input{introduction}
+\chapter{One Dimension}
+\input{one_dimension}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\appendix
+\chapter{Exhaustive Bounded Root Finding Method}
+\input{EveryRoot}
+%\chapter{Root Polishing}
+%\input{HalleyMethod}
+%\chapter{Basic Design}
+%\input{basic_design}
+%\input{simplify}
+
+
+%\chapter{Correlated Operations}
+%\input{correlated_ops}
+%\chapter{Truncated Lognormal}
+%\input{truncated_lognormal}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\bibliographystyle{plain}
+\bibliography{RandomVariables}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\end {document}

@@ -1,0 +1,26 @@
+\begin{thebibliography}{1}
+
+\bibitem{brent73}
+Richard~P. Brent.
+\newblock {\em Algorithms for Minimization without Derivatives}.
+\newblock Prentice-Hall, 1973.
+
+\bibitem{dineen00}
+Sean Dineen.
+\newblock {\em Probability Theory in Finance: A Mathematical Guide to the
+  Black-Scholes Formula}.
+\newblock Americal Mathematic Society, 2000.
+
+\bibitem{tausworthe09}
+Robert~C. Tausworthe.
+\newblock Finding every root of a broad class of real continuous functions in a
+  given interval.
+\newblock {\em IPN Progress Report}, 42(176), 2009.
+
+\bibitem{zhang11}
+Zhengqiu Zhang.
+\newblock An improvement to the brent’s method.
+\newblock {\em International Journal of Experimental Algorithms (IJEA)}, 2(1),
+  2011.
+
+\end{thebibliography}

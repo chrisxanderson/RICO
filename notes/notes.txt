@@ -1,0 +1,2910 @@
+### 7/16/2012 ###
+
+Started the initial directory layout in subversion. Need a makefile then will do autoconf, etc...
+
+### 7/17/2012 ###
+
+Found a great resource for the makefile build.
+http://www.apl.jhu.edu/Misc/Unix-info/make/make_1.html
+
+Have to upgrade to GNU build tools later. For now we just use make.
+
+### 7/19/2012 ###
+
+We have a viable directory structure. Need an appropriate Makefile[.in,.ac]. 
+I can install the build locally for testing so there doesn't need to be an external structure.
+The example I have in ~/junk/npbayes is Fortran code. I need C++. 
+Not sure if I should use Rcpp, it may be burdensome overkill.
+Still looking for an Ops override example that I can build and test.
+I think I should strip out the subdirs of ./src so that I can get going with some test code.
+
+Let's figure out how to get a running example with C++ we can play with...no Rcpp.
+
+Do-over. Clean directory. Use Rcpp skeleton. Stop with the Subversion weirdness.
+
+R CMD check phox
+R CMD build phox
+r
+install.packages('phox_0.1.tar.gz', repos=NULL)
+q()
+r
+require("phox")
+rcpp_hello_world()
+q()
+
+OK, now we need to RTFM. In /usr/local/lib/R/site-library/Rcpp/doc we find the manuals.
+Rcpp-introduction.pdf
+
+We can reference RcppExamples package for examples.
+
+### 7/20/2012 ###
+
+Do we really need S4 classes instead? How do we carry a C++ object in S?
+Read            ~/develop/notes/R/Extension/Rcpp-modules.pdf
+and  /usr/local/lib/R/site-library/Rcpp/doc/Rcpp-introduction.pdf
+
+There is a concept called "External pointers" that we need to expose C++ classes to R.
+Use: Rcpp:::XPtr
+
+class Uniform {
+  private:
+    double min, max;
+
+  public:
+    Uniform(double min_, double max_) : min(min_), max(max_) {}
+
+    NumericVector draw(int n) {
+      RNGScope scope;                                        // ???
+      return runif( n, min, max );
+    }
+};
+
+///
+
+using namespace Rcpp;
+
+RcppExport SEXP Uniform__new(SEXP min_, SEXP max_) {
+  double min = as<double>(min_), max = as<double>(max_);     // coerce params
+  Rcpp::XPtr<Uniform> ptr( new Uniform( min, max ), true );  // call and wrap in typed ptr
+  return ptr;
+}
+
+RcppExport SEXP Uniform__draw(SEXP xp, SEXP n_) {
+  Rcpp::XPtr<Uniform> ptr(xp);                               // like Python, we have obj as param
+  int n = as<int>(n_);                                       // coerce second param
+  NumericVector res = ptr->draw( n );                        // call
+  return res;                                                // no need to wrap since Rccp built-in
+}
+
+## Now we need another package to help with the wrapping of the exposed object pointer
+## This requires the cxxfunction() from the 'inline' package.
+
+## The way this is supposed to work is,
+
+r
+require("Rcpp")
+require("inline")  # ??
+
+f1 <- cxxfunction(,"",includes = '
+### all that stuff above ###
+', plugin = "Rcpp")
+getDynLib(f1)
+
+!Ay! this is tough. But, there's a wrapper for that. RCPP_MODULE. We can do this outside a package
+if we use the 'inline' package. Since this is goofy, we use the package method,
+
+r
+require(phox)
+mod <- new( mod )
+mod$norm( 3, 4 )
+
+####
+
+This is getting silly. The other extreme is to build and R module with S4 classes. These will have natural access to all of R. Why give that up? The main issue is data processing. Who holds the representation of the object. How extreme could this be anyway? A megabyte? What if I only had "C" functions for the heavy lifting? The deal is that I would have to pass the data to the function, it could then pass it around somehow. Let's learn how to do this better before we run from it for "greener pastures".
+
+It appears that Rcpp modules does a lot of wrapping, but we end up having S4 classes anyway so why not just start there? I don't see the advantage at this point unless the C++ classes already exist or are being used for some other target. These cases do not apply so ... poop. In any case we can always rebuild in Rcpp if the straight-up way bogs down. The complexity layer needs to make a better case for itself, however.
+
+Let's try a tutorial on calling C from R via S4 in R-C-interface.ppt ####
+Code examples:
+
+## useC1.c
+void useC(int *i) {
+  i[0] = 11;
+}
+
+## to compile to useC1.so
+
+R CMD SHLIB useC1.c
+r
+dyn.load("useC1.so")
+a <- 1:10                                 // have to allocate memory here.
+a
+out <- .C("useC", b = as.integer(a))      // pass function name then coerced R objects
+a                                         // 1  2 3 .. 10    Not passed as pointer/reference
+out$b                                     // 11 2 3 .. 10    this is altered
+q()
+
+## useC2.c
+void useC(int *i, double *d, char **c, int *l) {
+     i[0] = 11;
+     d[0] = 2.333;
+     c[1] = "foo";
+     l[0] = 0;
+}
+
+## in shell,
+
+R CMD SHLIB useC2.c
+r
+dyn.load("useC2.so")
+i <- 1:10                                 ## have to allocate memory here.
+d <- seq(length=3,from=1,to=2)		  ##  real number vector
+c <- c("a", "b", "c")          		  ## string vector
+l <- c("TRUE", "FALSE")        		  ## logical vector
+out <- .C("useC",
+          i1 = as.integer(i),
+          d1 = as.numeric(d),
+          c1 = as.character(c),
+          l1 = as.logical(l))
+out
+q()
+
+### Basically, .C sucks. It copies it's args going in and copies them coming out. What crap!
+### .Call() is preferred. It allows access of raw type, execute R code, access attributes
+###   and to handle missing values.
+
+## useCall1.c
+
+#include <R.h>
+#include <Rdefines.h>
+
+SEXP getInt(SEXP myint, SEXP myintVar) {         // SEXP; Simple EXPression. myint is int*
+     int Imyint, n;
+     int *Pmyint; 
+     PROTECT(myint = AS_INTEGER(myint));	 // R objects create in C must be protected.
+     Imyint = INTEGER_POINTER(myint)[0];         // grab first value
+     Pmyint = INTEGER_POINTER(myint);
+     n      = INTEGER_VALUE(myintVar);
+     printf(" Printed from C: \n");
+     printf(" Imyint: %d \n", Imyint);
+     printf(" n: %d \n", n);
+     printf(" Pmyint[0], Pmyint[1]: %d %d \n", Pmyint[0], Pmyint[1]);
+     UNPROTECT(1);                               // un-protect one object back. i.e. pop stack.
+     return(R_NilValue);
+}
+
+## to work with real values 'int' becomes 'double' (obviously) and INTEGER becomes NUMERIC.
+
+R CMD SHLIB useCall1.c
+r
+dyn.load("useCall1.so")
+myint <- c(1,2,3)
+out   <- .Call("getInt", myint, 5)               ## printing side-effect
+out                                              ## NULL
+q()
+
+## useCall2.c
+
+#include <R.h>
+#include <Rdefines.h>
+
+SEXP getChar(SEXP mychar) {
+     char *Pmychar[2];                          // we pass in 5 strings, but only need 2.
+
+     PROTECT(mychar = AS_CHARACTER(mychar));
+
+     Pmychar[0] = R_alloc(strlen(CHAR(STRING_ELT(mychar, 0))), sizeof(char)); 
+     Pmychar[1] = R_alloc(strlen(CHAR(STRING_ELT(mychar, 1))), sizeof(char)); 
+
+     strcpy(Pmychar[0], CHAR(STRING_ELT(mychar, 0))); 
+     strcpy(Pmychar[1], CHAR(STRING_ELT(mychar, 1))); 
+
+     printf(" Printed from C:");
+     printf(" %s %s \n",Pmychar[0],Pmychar[1]);
+
+     UNPROTECT(1);
+     
+     return(R_NilValue); 
+}
+
+## now, in the shell,
+
+R CMD SHLIB useCall2.c
+r
+dyn.load("useCall2.so")
+mychar <- c("do","re","mi", "fa", "so")   
+out    <- .Call("getChar", mychar)
+q()
+
+### To get information back from C,
+## useCall3.c
+
+#include <R.h>
+#include <Rdefines.h>
+
+SEXP setInt() {
+     SEXP myint;
+     int *p_myint;
+     int len = 5;
+
+     PROTECT(myint = NEW_INTEGER(len));            // protect the R object
+
+     p_myint    = INTEGER_POINTER(myint);          // get a pointer to the R object
+     p_myint[0] = 7;                               // use the pointer 
+
+     UNPROTECT(1);                                 // pop one off the stack
+
+     return myint;                                 // return the R object
+}
+
+## in shell,
+
+R CMD SHLIB useCall3.c
+r
+dyn.load("useCall3.so")
+out    <- .Call("setInt")
+out
+q()
+
+### useCall4.c
+
+#include <R.h>
+#include <Rdefines.h>
+
+SEXP setChar() {
+     SEXP mychar;
+     PROTECT(mychar = allocVector(STRSXP, 5));
+     SET_STRING_ELT(mychar, 0, mkChar("A")); 
+     UNPROTECT(1);
+     return mychar;
+}
+
+## in shell,
+
+R CMD SHLIB useCall4.c
+r
+dyn.load("useCall4.so")
+out    <- .Call("setChar")
+out
+q()
+
+### in useCall5.c
+
+#include <R.h>
+#include <Rdefines.h>
+   
+SEXP setList() {
+   int    *p_myint, i; 
+   double *p_double;
+   char   *names[2] = {"integer", "numeric"};
+
+   SEXP mydouble, myint, list, list_names;   
+
+   PROTECT(myint = NEW_INTEGER(5)); 
+   p_myint = INTEGER_POINTER(myint);
+   
+   PROTECT(mydouble = NEW_NUMERIC(5)); 
+   p_double = NUMERIC_POINTER(mydouble);
+   
+   for(i = 0; i < 5; i++) {
+     p_double[i] = 1/(double)(i + 1);
+     p_myint[i] = i + 1;
+   }
+
+   PROTECT(list_names = allocVector(STRSXP,2));
+   for(i = 0; i < 2; i++)   
+   	 SET_STRING_ELT(list_names,i,mkChar(names[i])); 
+
+   PROTECT(list = allocVector(VECSXP, 2)); 
+   SET_VECTOR_ELT(list, 0, myint); 
+   SET_VECTOR_ELT(list, 1, mydouble); 
+   setAttrib(list, R_NamesSymbol, list_names); 
+
+   UNPROTECT(4);
+
+   return list;
+}
+
+## in shell,
+
+R CMD SHLIB useCall5.c
+r
+dyn.load("useCall5.so")
+out    <- .Call("setList")
+out
+q()
+
+### Summary
+
+Try to compile individual C files with:
+gcc -pedantic -Wall
+
+And also check it carefully with torture test,
+R CMD check --use-gct
+
+##### End of R-C-interface.ppt ###################
+
+I'm thinking that you cannot pass-by-ref or pointer in R since that would violate immutability.
+Is that the principle of R? not sure. It seems so. I like it anyway, but that doesn't buy me much.
+It seems (according to: https://stat.ethz.ch/pipermail/r-devel/2009-July/054091.html) that
+R is pass-by-value. There may be many copies of your original object laying around. All the more reason to make sure we shadow a "real" object to avoid all the overhead.
+
+##############################################
+# See: ? reg.finalizer                       #  // to finalization on garbage collection.
+# And: R_Register*Finalizer* functions       #
+##############################################
+
+The ParametricRandomVariable is really a symbolic, the highest-level description.
+The LazyRandomVariable is the tree-forming denizen. It's the highest-level algorithmic description.
+
+We're trying to build this from the ground up and expose the layers separately for testing, learning, visibility. The PortlandRandomVariable is the lazy one (top level) and the one intended
+for highest and most common use. 
+
+We have purv and nrv concepts. I do want to have the piecewise functional version supplant the 
+piecewise uniform version. We'll have to wait for that one, but everything else should behave as
+before and the update will just be a rev.
+
+Let's find how to mix C++ and R, but not use Rcpp, since it's overkill.
+
+Following R-exts.pdf p.108
+
+R CMD SHLIB X.cpp X_main.cpp
+dyn.load("X.so")
+.C("X_main")
+
+### 7/21/2012 ###
+
+We are looking at a ProxyPattern which is a public wrapper for the PRV (Portland Random Variable).
+The PRV/R wraps RRV/C++. Since each PRV is indexed it should also be reference counted so we can remove it from memory. Is this necessary? Not sure. The first thing is to create the PRV/R. It will automatically create it's shadow PRV/C++. Since R objects can't contain C++ objects we have to store the C++ object on the C++ "side" and give the R object a cookie which we return with each call to C++ just like Python. This means that the PRV/C++ class must be accessed through static members which lookup the approrpiate object in a hash table and operate from there. Recall that the operation of the PRV/C++ includes creation of a parse tree.
+
+R CMD check phox
+R CMD build phox
+r
+install.packages('phox_0.1.tar.gz', repos=NULL)
+q()
+r
+require("phox")
+rcpp_hello_world()
+(myBMI  <- new("BMI",weight=85,size=1.84))
+(herBMI <- new("BMI",weight=62,size=1.60))
+(prv <- new("Prv", type="Stereotype"))
+q()
+
+### 7/23/2012 ###
+
+R CMD check phox
+R CMD build phox
+R CMD INSTALL phox -l ~/R/i686-pc-linux-gnu-library/2.15/
+r
+require('phox')
+prv <- new("Prv", type="Stereotype")
+foo(prv,'test')
+foo(prv)
+
+### 7/24/2012 ###
+
+Let's try to implement a "polynomial" class as found in the "S Programming" book and in
+~/develop/notes/R/Extension/[S4_example.R, S4_jacobian.R]
+
+### 7/25/2012 ###
+
+More polynomial class interpretation.
+Now have the operations apparently working. Time to move on to plotting?
+Another option is to move on to calling the C++ class via extern "C". That's better!
+I'll need to remove the Rcpp-ness of the current files. OK. That's doable.
+
+The polynomial.R shows how to overload the Ops. and add an object method by first defining
+a generic. We don't have any concept of namespace at this point or environment.
+
+Let's build a C method using .Call, but first rip out the Rcpp influence.
+Now we add an example C++ file with a function call.
+
+R CMD check phox
+R CMD build phox
+R CMD INSTALL phox -l ~/R/i686-pc-linux-gnu-library/2.15/
+r
+require("phox")
+.C("X_main")                                           ## no special wrappers needed. 
+x <- polynomial()
+foo(x)                                                 ## a new generic method
+bar(x)	                                               ## generic and calls getInt
+.Call("getInt", c(1,2,3), 5)                           ## function must be wrapped extern "C"
+.Call("getChar", c("do","re","mi", "fa", "so"))
+.Call("setInt")
+.Call("setChar")
+.Call("setList")
+
+So, where does this leave us? The X.cpp example shows how to build a global-scope object, it's trivial. I have a number of things to do, but they're failry straight forward. I want to know about environments and if I need to create one. I also need to finalize my first implementation test. It's pretty clear I'll go with a registration methodology. I wonder what it takes to get the STL involved. We'll see. I may have to make more careful use of CPPFLAGS and LIBS. There's time, let's try a hash of INT to X so we can create a bunch of them.
+
+.Call("testSTL_map")
+
+### 7/26/2012 ###
+
+Let's start building the prv class. 
+
+R CMD build phox
+R CMD INSTALL phox -l ~/R/i686-pc-linux-gnu-library/2.15/
+r
+require("phox")
+zar(Prv())
+
+Here's how write a function for Prv:
+1) If a generic method doesn't exit for our function, create one in R
+2) Set the generic method with R-class and function binding. The function performs .Call
+3) Create extern "C" function in the .cpp file. This calls static method.
+4) Create a static method in class
+5) (optionally) create a member function which is called once object is found.
+
+
+w/ Steve
+
+Random Variable Algebra Evaluation and Observation (RVAEO)
+
+Portland
+Direct
+Universal/Uncertainty
+Omnibus
+
+Direct Evaluation of Random Variable Algebra (DERVA)
+
+Direct Observation and Evaluation of Random Variable Algebra (DOERVA)
+
+Universal Computation of Random Variable Algebra (UCRVA)
+
+Algebra of Random Variables Evaluator 
+
+Accept Random Inputs (ARI)
+
+Possibly Correlated 
+
+Correlated Random variable Algebra Engine (CRAE)
+
+PHOX - Portland Hyper 
+PHALCON  - Portland H ALgebraic Calculation and ObservatioN
+Rtic???  - Random variable (tic) Calculator ???
+
+Viking - random Variable ---
+
+Coffee - Correlated ----
+
+Portland Algebra of Random Variable Calculation (PARC)
+
+Take Random Inputs (TRI) Output 
+
+Random In Correlated Out (RICO)
+Instead of Monte Carlo, run a Rico.
+
+#### back to programming ###
+
+R CMD build phox
+R CMD INSTALL phox -l ~/R/i686-pc-linux-gnu-library/2.15/
+r
+require("phox")
+x <- Prv()            ## prints 1(1)
+y <- Prv()            ## prints 2(2)
+
+Now there's the things to think about. We need to build in some testing, but the KRS is a good 
+source of examples and R-exts.PDF also has things to day. Documentation is needed. What else?
+I think I need to let the next step reveal itself. We are officially building the PRV, but we could build the lower level first with it's basic operations. This is great for testing and what needs to happen before the upper levels are attached anyway.
+
+It would be nice to have more control over the exposed functions and some say over the environment.
+Namespaces is still a question. (Section 1.6 p44)
+
+Question: How do we unload all the Prv objects we created? We need the ".Last.lib" function.
+
+Consider: useDynLib(foo, myRoutine, myOtherRoutine)
+Reason: it allows symbols to be resolved once and not each time they are evaluated. (p.47 R-exts)
+
+### 7/30/2012 ###
+
+Idea is to create the NRV, numeric random variable, not normally accessible to the user, perhaps, but definitely the first thing to build. The problem now is to determine how to construct the main engine. It needs a rebuild.
+
+If we build the bilinear engine, we need to map out the cases. That's OK, it's doable in 2D. The later 3D version is much more challenging.
+
+Now we come to the data representation. It's nice to have a linked list. This works just fine in C++ so we should just build one. This is the first class to get right. The other choices can wait.
+
+Wait a sec. I used to have the concept of a node. A node is an element of a doubly-linked list. No I have an XP (pair) that forms the type list<XP>. This is then more than a Node, it's a SimpleRandomVariable. The difference is profound. The implication is that we no longer provide direct access to "Nodes", but instead perform surgeries. That's much more appropriate, but it's a big coding change. OK. No fear. We now have the concept of a BaseRandomVariable. This replaces the SimpleRandomVariable and actually forms a base class. The personalization into ContinuousRandomVariable and DiscreteRandomVariable is distinguished by the types of surgeries performed.
+
+Let's check out UnitTest++.
+It's a bit weird. It claims to be light-weight...
+What I want is a unit testing framework that I can just build in. I want the tests to double as example code. There must be a way to compare results. There are many kinds of results possible, but any such object must at least be comparable. I could certainly require test or integer results only. That can go a long way. Serialized results. We can add more result types are we go. Serialized (text) is an important feature within the code anyway.
+
+Let's try writing the tests first and then see how to wrap the appropriate code around it.
+Suppose we want to test something as mundane as Pair. First I think was may need to wrap in a namespace, but that's for later. It's immutable so it's not a great test subject. Let's pick something else. BaseRandomVariable is the next choice.
+
+The big upgrade i can think of over vTest is to register tests in a list. How to do this?
+The test class must have an error fascility and all tests return True/False for Pass/Fail. 
+There must be some expected result given so tests can be templated to that result. But that's on a single test basis. This means UnitTest is a list of registered TestCase<TYPE> objects where TYPE is the return type available. Now, that's a bit of overkill, I suppose. We could have different TestCaseX objects depending on return type with a base class that supports the basic testing operations including equals and recording errors.
+
+R CMD build phox
+R CMD INSTALL phox -l ~/R/i686-pc-linux-gnu-library/2.15/
+r
+require("phox")
+BaseRandomVariableTestRun()
+
+### 7/31/2012 ###
+
+Automatically load the "phox" package into R
+
+"You can use a site profile file, or you can set R_DEFAULT_PACKAGES.  
+ Both are described in ?Startup (a pretty obvious  place to look, surely).  
+ For example, you might put in R_HOME/etc/Rprofile.site,"
+
+ options(defaultPackages=c(getOption("defaultPackages"), "phox"))
+
+Also: we could create a Makefile at the top level to handle the R CMD ... suff.
+
+#######################################
+Here's what we do in ~/develop/bin/r  #
+export R_DEFAULT_PACKAGES='phox'      #
+R --quiet --no-save --no-restore      #
+#######################################
+
+r
+BaseRandomVariableTestRun()
+q()
+
+Now, for the Makefile. We need to check the targeting. We need an all: and others.
+what can we watch for the target:
+/home/tomf/R/i686-pc-linux-gnu-library/2.15/phox/libs/phox.so
+./phox_0.1.tar.gz
+
+The goal is to create a single top-level test we run called: test.phox()
+
+## Now here's the call sequence.
+make
+r
+test.phox()
+
+The deal now is to implement the vanilla version of PHoX. This gets my feet wet and provides a springboard for all the fancy upgrades that I have swirling around.
+
+Notice that for the head and tail we don't need to actually store -inf and +inf!
+
+#include <math.h>  //Use INFINITY and NAN.
+
+The question arises; if brv's are immutable then why do we need a [linked-]list? I think what we need is a set of access functions that convert vectors to lists to perform surgery and return vectors. Also, do we really need a Pair? It's not useful as such. The point is to create downstream code convenience. The internals can be common-sense if slightly inconvenient. By the way, I don't like iterators. They are ugly.
+
+What if we do introduce 1.Corr (100% correlation)? This means we have two kinds of basic rvs. The first is the root which contains the probability within each partition element (partition probability). The second is the list of partition values. In practice we can have a common object that defines the source and gives the children identity. This can be id-counted, but in actuality we can use the object pointer as the id code as well. Not so nice, I suppose, but complete. Not as pretty either, so we can do ints for now. Thus the id is an object that also defines the partition probability. 
+
+Oh, but wait. What about a disjointing such as 1/x? Zero is split into +/-infinity and +/-infinity are joined at zero. Also, the whole thing has out-of-order endpoints. In general we have each probability value mapping to two endpoints and the whole collection is potentially not only out-of-order, but overlapping/disjoint, i.e. non-proper partition. Interesting.
+
+### 8/11/12 ###
+
+We now move to write up the design of the new 1D f(X) system. There will be code-snippets created.
+
+See: RticPHoX/BlackScholes for a working example. Here's the thing to get going.
+We do the following two-step to get .eps files to appear.
+
+%> latex BlackScholes.tex
+%> dvipdf BlackScholes.dvi
+
+A Makefile is likely a good idea here.
+
+### 8/21/2012 ###
+
+The Khalifa Presentation is in the can so it's back to the Effort.
+
+### 8/23/2012 ###
+
+The goal today is to get a rudimentary directed tree of random variable and functional objects. We need to have a way to create them within R. We need a way to create test cases and figure out what that means with so little going on. There's no need to process anything, but some printing would be nice.
+
+Have a rudimentary Rico object with R interface. Let's beef that up.
+
+Recall that "%> r" will automatically load "phox". Haven't changed the name yet. 
+
+%> r
+rico.test()
+x <- rico.plain()            ## prints 1(1)
+y <- rico.plain()            ## prints 2(2)
+
+Now we want to capture the generics of power functions, sums and products of pairs of Rico objects and Rico,constant objects as well. This is the next order of business. See polynomial.R
+
+On the C++ side we need to capture the different operations. The way this works is that functions of X and binary operations such as X*Y return a Rico object as a result. Naturally this object is registered and only a wrapper R object with a ID code is materialized in R.
+
+%> r
+x <- rico.plain()
+y <- rico.plain()
+- x
+x - y
+x + 2
+x * 3
+2 + x
+x ^ y
+x + y
+x * y
+x / y
+x ^ y
+log(x)
+exp(x)
+
+Now we need to figure out how to split the C++ files up so they don't bloat. OK.
+
+### 8/24/2012 ###
+
+We could figure out how to support Normal(u,s)...and to plot it!
+To get going we need a library for the statistics stuff. I don't want to write the distributions from scratch, but that's not an entirely bad thing. I wonder. There is a *free* library called "Boost" that seems good. Not sure. It has at least some of what's needed. I've downloaded it, but am concerned about physical distribution. It's typically "header only" so may not require separate compilation. That's very attractive for portability and distribution. If there is a reliable set of function approximations to the various distributions that may be a better way to go especially if there are approximations to CDF's as well. This is the erf and erfc. The Boost has those.
+
+Maybe I should be "lazy" about this an just use the library until I feel like replacing it.
+
+Boost:
+/usr/local/boost_1_51_0
+$BOOST_ROOT
+Need: boost/ subdirectory in your #include path
+Typical usage: #include <boost/whatever.hpp>
+
+May need to update the makefile so that Boost is located. On the other-hand boost is 441Mb!
+I wonder if we can pull out a single library without doing creating a tangle. See,
+/boost_1_51_0/boost/math/distributions
+
+It appears we can build specific libraries. This is very good. I wonder if this will play out,
+http://www.boost.org/doc/libs/1_51_0/more/getting_started/unix-variants.html#prepare-to-use-a-boost-library-binary
+
+Note that we may not have to rely on Boost. There is something called the TR1 extension to C++. It's part of the standard library. See,
+http://stackoverflow.com/questions/1118482/c-tr1-how-to-use-the-normal-distribution
+
+### 8/30/2012 ###
+
+We have a NAMESPACE issue. Notice that the following works in R, but not r.
+%>R
+
+track <- setClass("track", representation(x="numeric", y="numeric"))
+
+setMethod("plot", signature(x="track", y="missing"), function(x, y, ...) {
+    #plot(x@x, x@y, ...)
+    print("foo")
+  }
+)
+
+t1 <- new("track", x=1:20, y=(1:20)^2)
+
+plot(t1)
+
+The following in r, requires the use of prefix phox:: because, well, I'm not sure.
+%>r
+x <- rico.plain()
+phox::plot(x)
+
+args(plot)  ## will discuss the .GlobalEnv. plot
+
+detach(package:phox, unload=TRUE)
+library(phox)
+x <- rico.plain()
+plot(x)
+
+OK...I think that rico/phox doesn't have a namespace. But, I cured the problem for now by putting phox at the end of the list in ~/develop/bin/r
+now,
+
+%>r
+x <- rico.plain()
+plot(x)
+
+Now we want to create and plot the distribution directly. We don't have the concept of extents at this point since max and min can be folded so much. It's definitely an extra piece of work, but perhaps one that we should implment so that it pays off.
+
+Implement:
+rico.tri(<left>, <mid>, <right>)
+rico.tri(<left>, <right>)  
+rico.tri(<mid>)            ## default to (mid-1, mid, mid+1)
+rico.tri()                 ## default to (-1,0,1)
+rico.norm(<mean>, <var>)
+rico.norm()                     ## default to (0,1)
+
+x <- rico.tri(2,3)
+
+Need to figure out how to return 2D array of NUMERIC values for plotting.
+CADR CADDR p.123
+first = CADR(args);
+second = CADDR(args);
+third = CADDDR(args);
+fourth = CAD4R(args);
+
+rico.showArgs(one="first", two=2, three=3.0) 
+rico.showArgs1(one="first", two=2, three=3.0) 
+
+Now we want to return a list of two parallel arrays for plotting. I saw something in my travels...
+First return a list...
+
+x <- rico.testGetList()
+typeof(x[[1]])  ## double 
+typeof(x[[2]])  ## integer
+
+x <- rico.testGetArray()
+plot(1:100,x,type="l")
+
+xy <- rico.testGetArrayList()
+plot(xy[[1]], xy[[2]])
+
+### 9/4/2012 ###
+
+I'm ready to dredge up some plot data. I suppose that that weird list unpacking needs one last look before I just go for it. If we can't name the list elements then why use them?
+
+Let's try plotting with names list values
+%>r
+a <- c(1,2,3,4)
+b <- c(5,3,4,2)
+z <- list(x = a, y = b)
+plot(z, type="l")
+
+This works, so we want to do this for our system. It's cool.
+rico.testGetArrayList <- function() .Call("testGetArrayList")
+
+Oh, brother. Anyway, trying to do something simple isn't itself simple. More short-cuts do not make short-work.
+
+The testGetArrayList returns a list. I suppose I could do a 2-row matrix. I'm going to let it go at the moment. It's messy anyway.
+
+The next idea is to take the suggested range for a distribution and carry it forward even if plotting f(X) or f(X,Y), etc. This is non-trivial in the case of f(x) = x^2. It's a good idea, though since we can do it (just not sure how at this point) and the users will expect it. So there.
+
+Now we need to implement this feature. I think we need another .cpp file to provide these operations unless we need to keep things together in CreateRico.cpp in which case it needs to be renamed.
+
+NB: Removed: rico.plain()
+%r>
+x <- rico.tri()                 ## default to (-1,0,1)
+plot(x)
+
+### 9/11/2012 ###
+
+The cure is to have a MACRO that rewrites each rico::method call to an up-cast call. The Rico object will contain an enum of all types and store the type of each object since this information will be lost.
+
+### 9/12/2012 ###
+
+Still wrestling with initialization. Time to punt. Punt complete. The following works,
+
+%r>
+x <- rico.tri()                 ## default to (-1,0,1)
+plot(x)
+
+Now it's time to make the plot(x) work. To do this we need to replace the missing virtual function feature. Our first step is: Pair getSuggestedPlotRange(). What is the best way to handle this problem? We need to cast-before-call based on class. The problem is that each member function has a potentially different signature. Macros suck, but may be the only sure way to keep step-repeat errors down.
+
+Let's see if I can create a vtable for the interface functions to replicate virtual functions.
+
+OK, the big flash is to take the switch/cast manual virtual function and roll it into the pure virtual base function! And the answer is in,
+library/snippets/inherit.cpp
+
+%r>
+x <- rico.tri()                 ## default to (-1,0,1)
+y <- rico.norm(5)
+plot(x)
+plot(y)
+
+OK. So far we're not plotting anythgin real. We do have a suggested plot range and that's a big step because now we can turn around and have the R/plot function call down with a partition.
+
+Example: left = 5, right = 7
+left  <- 5
+right <- 7
+N     <- 10
+Xo    <- 1:N
+X     <- (Xo-1)/(N-1)*(right-left) + left
+
+OK, give it up for today. Want to read the X partition from plot and return corresponding Y.
+
+### 9/14/2012 ###
+
+Here's the deal; create X = (x1, ..., xn)
+this defines a set of points at which we want to compute the probability density. The answer is
+Y = (y1, ..., yn) and to compute it we must form a partition Z = (z0, z1, ..., zn+1) where
+Example X = (2,4,6) then Z = (1,3,5,7) where we have chosen the midpoints and reflected the choices for the first and last intervals through the two endpoints. Then we compute,
+Pr(Z) = Pr(z < z0),Pr(zo < z < z1), ..., Pr(zn+1 < z). This creates n+2 values. 
+Let pi = Pr(zi < z < zi+1) then P = (p0, ..., pn+1) and finally Y = (p1, ..., pn)
+That is, we presume the partition to include the (-inf,zo) to (zn+1, +inf) intervals and simply throw them away when we are ready to return the probability density heights, Y.
+
+Now we need to create a vector<double> from X and to create utils that will turn X into Z, perform the Pr(Z) computation and then strip the two endpoints (slice == 1:n-1). That's the deal for today.
+
+%>r
+x <- rico.tri()
+plot(x)
+
+Now the CDF of normal is: Pr(X <= x) = 1/2 erfc((mu - x)/(sqrt2 * sigma))
+
+x <- rico.norm()
+plot(x)
+
+x <- rico.norm()
+png('normal.png')
+plot(x)
+dev.off()
+
+x <- rico.tri(1,4,5)
+plot(x)
+
+x <- rico.tri()
+png('triangular.png')
+plot(x)
+dev.off()
+
+### 9/17/2012 ###
+
+Now we try to use the boost libraries...
+/usr/local/boost
+
+in ./library/snippets:
+g++ -I /usr/local/boost boost1.cpp -o boost1
+echo 1 2 3 | ./boost1
+3 6 9 
+
+cd /usr/local/boost
+./bootstrap.sh --help
+./bootstrap.sh --show-libraries
+
+Notice: #include <boost/math/distributions...>
+
+./bootstrap.sh --prefix=/home/tomf/boost --with-libraries=math
+
+## The bootstapping is done. To build (in the usr/local/boost dir)
+
+./b2 --prefix=/home/tomf/boost --build-dir=/home/tomf/boost
+
+## edit porject-config.jam to adjust the configuration. And to get help,
+./b2 --help
+./b2 --show-libraries
+## should just list "math"
+
+Oy. The boost stuff definitely needs modularization. That's coming, but not yet available.
+
+chi_squared.hpp askes for #include <utility>
+
+Let's see how we do with a chi-squared example
+g++ -I /usr/local/boost chi_square_std_dev_test.cpp -o chi_squared
+g++ -I /home/tomf chi_square_std_dev_test.cpp -o chi_squared
+
+We have carved out a bunch of stuff from the main /usr/local/boost/boost distribution. 
+This is included in the directory: phox/src/boost. Not sure if I can use it yet, though...
+
+$> r
+rico.testChiSquare_w_Boost()
+
+This needs to appear in Makevars (really want the local equivalent).
+PKG_CXXFLAGS = -I /home/tomf
+
+We need to create 
+~tomf/.R/Makevars
+
+and put the following line in it,
+PKG_CXXFLAGS = -I /home/tomf/sandbox/PHoX/phox/src
+
+Now we're getting somewhere...but it's not portable yet!
+HOW DO WE DISTRIBUTE THIS IF WE'VE PUT THE INCLUDE DIRECTIVE IN SOME LOCAL FILE????
+
+I would prefer a local solution. Let's see if I can soak out the actual algorithm for ChiSquared CDF.
+
+template <class RealType, class Policy>
+inline RealType cdf(const chi_squared_distribution<RealType, Policy>& dist, const RealType& chi_square
+   return boost::math::gamma_p(degrees_of_freedom / 2, chi_square / 2, Policy());
+
+Not sure what "Policy" is, but it may not matter. Not sure what "chi_square" means either. x?
+
+from line 1550 of math/special_functions/gamma.hpp we find gamma_p
+
+// Regularised lower incomplete gamma:
+template <class T1, class T2, class Policy> inline typename tools::promote_args<T1, T2>::type
+   gamma_p(T1 a, T2 z, const Policy&)
+
+Now, how does this work?
+
+   detail::igamma_initializer<value_type, forwarding_policy>::force_instantiate();
+
+   return policies::checked_narrowing_cast<result_type, forwarding_policy>(
+      detail::gamma_incomplete_imp(static_cast<value_type>(a),
+      static_cast<value_type>(z), true, false,
+      forwarding_policy(), static_cast<value_type*>(0)), "gamma_p<%1%>(%1%, %1%)");
+
+can look at: ./math/special_functions/lgamma_small.hpp
+and          ./math/special_functions/detail/igamma_large.hpp
+
+There are references to specific books that implement these values.
+// The primary reference is:
+// "The Asymptotic Expansion of the Incomplete Gamma Functions"
+// N. M. Temme.
+// Siam J. Math Anal. Vol 10 No 4, July 1979, p757.
+Is available in ./library/igamma.pdf
+
+// in: math/special_functions/gamma.hpp
+// Main incomplete gamma entry point, handles all four incomplete gamma's: 
+template <class T, class Policy> T 
+gamma_incomplete_imp(T a, T x, bool normalised, bool invert, const Policy& pol, T* p_derivative)
+for Chi-Squared: normalized is true, invert is false
+
+For Student-t we need incomplete beta (ibetac) complement in ./math/special_functions/math_fwd.hpp
+The F-Distribution CDF is the regularized incomplete beta function.
+The Cauchy CDF is just an arctan.
+
+### 9/18/2012 ###
+
+Chi-Squared. We create the distribution with df=N-1 in our example. I think the variable chi_square is the x in CDF(x).
+boost::math::gamma_p(degrees_of_freedom / 2, chi_square / 2, Policy());
+Since CDF(x; df) = regularized_Gamma_function(df/2, x/2)  <--------------------- key
+
+So we need to carve our gamma_p from Boost. See ./math/special_functions/gamma.hpp & gamma_fwd.hpp
+Boost calls gamma_p: // Regularised lower incomplete gamma
+
+We can learn about Boost-style programming from the book 
+"C++ Template Metaprogramming: Concepts, Tools, and Techniques from Boost and Beyond" - David Abrahams and Aleksey Gurtovoy
+
+I don't know what all the fussiness if about in Boost, but it's still pretty cluttered to me. I wonder what the forwarding policy is so it can be safely ignored.
+
+detail::igamma_initializer<value_type, forwarding_policy>::force_instantiate();
+
+AKAIK the force_instantiate is all about setting the precision of the calculation.
+The p_derivative is used by the inverse calculator in detail::igamma_inverse.
+
+gamma_incomplete_imp(a,x,<normalized>,<inverted>) first chooses the method to use based on a,x and the precision. We need,
+finite_gamma_q               COPIED
+boost::math::tgamma
+detail::gamma_imp
+finite_half_gamma_q
+regularised_gamma_prefix
+full_igamma_prefix
+detail::lower_gamma_series
+tgamma_small_upper_part
+upper_gamma_fraction
+igamma_temme_large
+regularised_gamma_prefix
+
+I install the GNU GMP, but it's big. It's an arbitrary precision library. I ran across is when trying to calculate the gamma function.
+The Tosh stuff doesn't work. The GMP passes it's tests, but it's taking me afield.
+
+You know, we might just try to pick up gamma.hpp in one scoop after combing out all the special bits.
+
+### 9/19/2012 ###
+
+Trying to get gamma.hpp up and running outside ./boost. There a a lot of include files.
+I think the best course is to go to the implementation and work my way back up.
+
+We are trying to run 
+gamma_p(degrees_of_freedom / 2, x / 2, Policy());
+// Main incomplete gamma entry point, handles all four incomplete gamma's,
+detail::gamma_incomplete_imp(static_cast<value_type>(a),
+			     static_cast<value_type>(z), true, false,
+      			     forwarding_policy(), static_cast<value_type*>(0))
+case 0: finite_gamma_q(a, x, pol, p_derivative)
+        boost::math::tgamma(a, pol);
+case 1: finite_half_gamma_q(a, x, p_derivative, pol);
+        regularised_gamma_prefix(a, x, pol, lanczos_type());  // if p_derivative
+case 2: regularised_gamma_prefix(a, x, pol, lanczos_type())
+        full_igamma_prefix(a, x, pol);
+	boost::math::tgamma(a, pol)
+	detail::lower_gamma_series(a, x, pol, init_value)
+case 3: tgamma_small_upper_part(a, x, pol, &g, invert, p_derivative);
+case 4: regularised_gamma_prefix(a, x, pol, lanczos_type())
+        full_igamma_prefix(a, x, pol);
+	upper_gamma_fraction(a, x, policies::get_epsilon<T, Policy>());
+case 5: igamma_temme_large(a, x, pol, static_cast<tag_type const*>(0));
+        regularised_gamma_prefix(a, x, pol, lanczos_type());  // if p_derivative
+
+Let's work through each one at a time,
+1)  finite_gamma_q(a, x, pol, p_derivative)
+2)  boost::math::tgamma(a, pol)                                  // this one is tricky.
+2a) tgamma(T1 a, T2 z, const Policy&, const mpl::false_)
+2b) tgamma(T z, const Policy& /* pol */, const mpl::true_)
+3)  finite_half_gamma_q(a, x, p_derivative, pol);                // Upper gamma fraction for half integer a:
+4)  regularised_gamma_prefix(a, x, pol, lanczos_type())          // Compute (z^a)(e^-z)/tgamma(a)
+5)  full_igamma_prefix(a, x, pol);
+6)  detail::lower_gamma_series(a, x, pol, init_value)
+7)  tgamma_small_upper_part(a, x, pol, &g, invert, p_derivative);  // Upper gamma fraction for very small a:
+8)  upper_gamma_fraction(a, x, policies::get_epsilon<T, Policy>());
+9)  igamma_temme_large(a, x, pol, static_cast<tag_type const*>(0));  // have to figure out which one we need.
+10) unchecked_factorial<T>(itrunc(z, pol) - 1);                    // included the whole file
+11) Lanczos::lanczos_sum(z)                                        // not sure where "Lanczos" is defined
+12) tools::log_max_value<T>()                                      // need another file: ./math/tools/precision.hpp
+13) Lanczos::g()                                                   // a type-dependent value
+14) boost::math::constants::half<T>()                              // it's in the file I think, but not sure where!
+15) boost::math::constants::pi<T>()                                // ibid
+16) tools::log_max_value<T>()                                      // this is not easy to find
+
+17) policies::raise_overflow_error<T>
+18) detail::gamma_imp(static_cast<value_type>(z), forwarding_policy(), evaluation_type())
+    // tgamma(z), with Lanczos support:
+19) boost::math::erfc(sqrt(x), pol);
+20) constants::root_pi<T>()
+21) lgamma_imp(a, pol, l)
+22) boost::math::log1pmx(d, pol)
+23) boost::math::constants::e<T>()
+24) Lanczos::lanczos_sum_expG_scaled(a)
+25) lower_incomplete_gamma_series<T>
+26) boost::uintmax_t
+27) policies::get_max_series_iterations<Policy>()
+28) policies::get_epsilon<T, Policy>()
+29) boost::math::tools::sum_series(s, factor, max_iter, init_value);
+30) policies::check_series_iterations<T>("boost::math::detail::lower_gamma_series<%1%>(%1%)", max_iter, pol);
+31) boost::math::tgamma1pm1(a, pol);
+32) boost::math::powm1(x, a, pol);
+33) detail::small_gamma2_series<T>
+34) upper_incomplete_gamma_fract<T>
+35) boost::math::tools::continued_fraction_a(f, eps)
+36) tools::evaluate_polynomial(C0, z)
+
+What does this mean?
+typedef typename tools::promote_args<T>::type result_type
+static_cast<T>
+BOOST_MATH_INSTRUMENT_VARIABLE(zgh)
+BOOST_MATH_STD_USING
+::std::numeric_limits
+
+Strategy:
+I'll put std::cout statements within an altered gamma.hpp file and 
+run a little test program to find the CDF for various values.
+
+Note:
+Need to include:
+detail/igamma_large.hpp
+detail/unchecked_factorial.hpp
+lanczos.hpp
+plus others. This just isn't a modular body of code. 
+It's mixes all the possible precisions. That's fine, but it just can't be carved out for the one you want!!
+
+I think I'll punt and go with the "Numerical Recipes in C". It's cheap and dirty which is were we are now.
+
+Note: Removed ~/.R/Makevars and Boost support.
+%> r
+rico.test_Gammaln()
+
+We should consider the GSL (Gnu Scientific Library) for the incomplete gamma function.
+What is "incomplete" about the incomplete gamma function? Integral? Yes.
+I think the GSL requires fortran...nope. All "C". 
+
+New plan. Let's carve up the GSL for the incomplete gamma function (it's in there!).
+The lgamma implemented in the C++ Standard Library (TR1?)
+
+The GSL has a test harness that's pretty rudimentary since it's all written in C.
+Let's carve out the gamma stuff. The testing will provide input/output pairs to check against.
+
+If thing we do is get it compile with gcc. Then we upgrade to C++ or maybe just allow extern "C".
+Getting really close to compiling the stripped-down GSL in C.
+
+### 9/20/2012 ###
+
+I don't know about this: HAVE_IEEE_COMPARISONS, I'm going to force the issue in infnan.c
+OK, I think I've got it compiled (correctly?). Time to test,
+double gsl_sf_gamma_inc_P (double a, double x)
+
+It works! Time to save our place and see about including the other functions in the GSL. Well, not
+all of them. The next one is Student-t.
+double gsl_sf_beta_inc (double a, double b, double x)
+This works. The Student-t has b=0.5 and the F uses the same dsn, but with b variable. This is cool.
+
+### 9/24/2012 ###
+
+Now let's get the <GSL>.c's into a single .h and .cpp pair. For that we need to know the dependence tree. We could just walk this manually since the cpp doesn't matter. The whole thing can be wrapped in a single extern "C", but I think I would rather wrap each file separately. Actually, can I build the .cpp automatically? What about the .hpp? The Makefile to the rescue? It already has the make depends construct. The makedepend tool is considered old-school. Um, it's so old-school that I don't think it works at all. Removed. Now what? By hand.
+
+Now, how to build the different CDF's? Let's do it in the test main.cpp. Now, must look at Boost for hints on how to do this. Doesn't GSL have anything? Sort of. It has the PDF's
+
+Let's work on Student-t (incomplete beta) and F-dist (Generalized student-t)
+student_t = ibeta(df / 2, 0.5, z) / 2;
+Fisher-F  = return v1x > df2
+            ? boost::math::ibetac(df2 / 2, df1 / 2, df2 / (df2 + v1x), Policy())
+            : boost::math::ibeta (df1 / 2, df2 / 2, v1x / (df2 + v1x), Policy());
+gsl_sf_beta_inc_e
+
+Student-t seems to be working. Although we would like to have the complement of the incomplete beta.
+
+### 9/25/2012 ###
+
+Let's build it in. Copy the gsl over to the program and go for it. We also need some testing, but that can (as usual) wait for a bit. There's just not that much to test yet.
+
+TODO: // Consider putting this in the base class? DONE
+vector<double> RicoChiSquared::Pr(vector<double> x) const {
+
+In the meantime. Let's get ChiSquared up and running...
+%> r
+x <- rico.chisq(4)
+plot(x)
+grid()
+
+png('Chi2_4.png')
+plot(x, xlim=c(0,8), ylim=c(0,.5))
+dev.off()
+
+Now let's consider the repeated computations of Pr and CDF. Done.
+On to Student-t and Fisher-F
+
+%> r
+x <- rico.t(3)
+plot(x)
+
+Hey! Why don't we get R to overlay the plot?!
+
+png('Student_2.png')
+df=2
+y <- rico.t(df)
+plot(y)
+x <- seq(-4, 4, length=100)
+lines(x, dt(x,df),type="p")
+dev.off()
+
+TODO: Rename my distributions to match R. normal-> norm, chisq, etc. DONE.
+The F-distribution is not so simple to find the suggested range. That will take some time. 
+I'll leave it for tomorrow. Or not, It works.
+
+df1 <- 1
+df2 <- 1
+y <- rico.f(df1, df2)
+plot(y, ylim=c(0,3))
+x <- seq(0, 3, length=100)
+lines(x, df(x,df1, df2),type="p")
+
+### 9/26/2012 ###
+
+The Cauchy distribution CDF is really easy: 1/pi * arctan((x-u)/s) + 1/2
+
+%> r
+mu <- 1
+s <- 2
+y <- rico.cauchy(mu, s)
+plot(y, ylim=c(0,.2))
+x <- seq(-7, 9, length=100)
+lines(x, dcauchy(x,mu,s),type="p")
+
+The LogNormal distribution is also easy. 1/2 + 1/2*erf[(ln(x)-u)/sqrt(2*s^2)]
+
+%> r
+mu <- 1
+s <- 2
+y <- rico.lnorm(mu, s)
+plot(y, ylim=c(0,.6))
+x <- seq(0, 5, length=100)
+lines(x, dlnorm(x,mu,s),type="p")
+
+The Beta distribution is really just the (Normalized/Regularized) incomplete beta function.
+We just have to copy the Student-t distribution and use it "raw". 
+
+%> r
+alpha <- 2
+beta  <- 5
+y <- rico.beta(alpha, beta)
+plot(y, ylim=c(0,2.5))
+x <- seq(0, 1, length=100)
+lines(x, dbeta(x,alpha,beta),type="p")
+
+The Exponential distribution is easy. CDF = 1-exp(-lambda * x)
+Solve this for .999 to find the suggested range: exp(-lambda * x) = 1 - 0.999 = .001
+Then x_max = -log(.001)/lambda
+
+%> r
+lambda <- 1.5
+y <- rico.exp(lambda)
+plot(y, ylim(0,1.6))
+x <- seq(0,5, length=100)
+lines(x, dexp(x,lambda),type="p")
+
+The Logistic distribution is easy.
+
+%> r
+mean <- 2
+scale <- 1
+y <- rico.logis(mean, scale)
+plot(y, ylim=c(0,0.3))
+x <- seq(-5, 10, length=100)
+lines(x, dlogis(x,mean,scale),type="p")
+
+Tukey distribution is easy: CDF = 1/exp(exp(-x)+1) ??? Not really. Only true for Lambda=0.
+We'll leave this one out.
+
+### 9/27/2012 ###
+
+Weibull distribution is easy: CDF = 1 - exp(-x/lambda)^k
+
+%> r
+shape <- 1.5
+y <- rico.weibull(shape)
+plot(y, ylim=c(0,1))
+x <- seq(0, 3.5, length=100)
+lines(x, dweibull(x,shape),type="p")
+
+The Uniform distribution is the last one out there. It's not as simple as you might think because of the cases. Oh, hell, of course it is. We should revisit the Triangle distrubution and simplify it.
+
+%> r
+a <- 2
+b <- 5
+y <- rico.unif(a,b)
+plot(y, ylim=c(0,.4))
+x <- seq(a-.2, b+.2, length=100)
+lines(x, dunif(x,a,b),type="p")
+
+Updated the Triangle distribution to just compute CDF and not try to do the Pr thing.
+
+%> r
+x <- rico.tri(1,4,5)
+plot(x)
+
+Now we're done with distrubutions. Time to switch gears and do the real deal.
+
+We have all the supported operations set up. Let's review quickly. 
+
+%> r
+x <- rico.tri()
+z <- 2*x
+
+### 9/28/2012 ###
+
+Now to print the extressions. This works as planned. The next step is to allow for collapsing.
+For example, instead of printing Y4 * Y5 when Y5=2 we just print Y4 * 2. 
+To accomplish this we need to digest the expression. Then we only print two lines: the expression
+and the definition of X<id> perhaps even with a , where X<id> = ...
+Also, need to get rid of the TRF:... debug lines. They've served their purpose.
+
+I think we need two kinds of "show", the one where were we represent the expression and the other
+where we define the underlying RV. Consider an expression of the form,
+x1^2 + log(2*x1 - 4)
+
+To display this we need to return a string and do the printing at the top (Rico.cpp) level.
+This means we don't have Rprintf in each C++ file. We do need an sprintf or String equivalent.
+Let's try one. String get_expression() const;
+
+%> r
+rico.testString()
+
+### 10/1/12 ###
+
+Let's get the string thing working. The outstanding problem is to collect or print a list of definitions of basic RV's that are only represented symbolically. It's a two-step. Since we're walking a directed graph we're likely to see the same variable(s) over and over. We only want to print them once. A map is in order <id,rico> Then print the name.
+
+Here's how it works. We get the expression and when it contains a basic RV then we just print X<#>.
+Then we do another pass. We pass in a map<int,rico*> to be filled in by all the basic RV's.
+Then we do a final pass, printing the expression of the RV's in the map.
+
+%> r
+x <- rico.tri()
+2*x + log(exp(x + 5))
+y <- rico.norm()
+x + 2*y
+
+Well, heck. It worked right out of the box. The minor issue is that we have too many parentheses.
+I'll have to think of a more sophisticated output scheme. 
+
+TODO: Remove the unnecessary debug statements. DONE.
+
+Now we want to create the derivative of the given expression. There should be a simplification process. Maybe I should return to the printing process to ensure parentheses simplification.
+
+Start simply with 2 + 3*x. Currently this is printed as (2 + (3*x)). How do we know when we need parentheses? Functions always. Expressions (+-*/^) sometimes. The top level never needs (). The 3*x following a + doesn't need parentheses, but 2*(3+x) does, + following *. Precedence.
+What about (2+x)-(3+x)? In this case 2+x is "following - on the left so we don't need (),
+2+x-(3+x), but the 3+x does need paren. On the other hand 2+x-3*x doesn't need parens. I think we only need to know the parent operator to decide if we need parens or not. Let's try that out.
+
+Let's see. We need a more methodic way to approach this printing of compound rv expressions.
+(2+3)^(7*9)  2^(7*9)  (2*3)^(7*9)  (2*3)^7
+If the left or right expression is compound we'll need to wrap it in parens.
+This means that if we know we're the child of ^ and a compound, we need parens else we don't.
+
+INT and basic rv's never wrap themselves in parens.
+
+NEG: -X1, -(2+X1), -2*X1, -log(X1)
+
+TODO: Um, we have an extra endline. DONE.
+
+ADD: (2 + 3) + (4 + 5) == 2 + 3 + 4 + 5
+
+MULTIPLY: (2+3)*7  (2+3)*(4+5)  (2+3)*4^5  2*3.*.4^5
+	  (2*3)+X == 2*3+X
+
+### 10/2/2012 ###
+
+x <- rico.tri()
+y <- 3-x
+5 + y
+5 - y
+y - 5
+y*5
+-y*5
+
+TODO: The upgrade we need is to provide a sign on the binary ops. We can have a default of right-hand. That is -1, +1 and 0 for unary ops. Can we just do all this in the base class? DONE.
+
+### 10/3/2012 ###
+
+Let's put in the other two number types we need and then try to understand how to approach the "well-known" constants. We need RicoDouble and RicoFraction which sets us up for RicoComplex.
+
+Suppose we try to create an integer. How do we do this?
+See: Rico.R, setAs("numeric", "Rico",...
+We'll need to determine how to setAs for various types including int and double.
+
+The RicoFraction is really meant for internal use since there's no way for R to specify it.
+
+Need to think about how to represent numbers. In order to bring them together in an expression we need to identify them. Asking the id registry to do this is a bit weak. We'll see.
+
+I wonder if I should have a base class for RicoNumber or just triplicate with Integer, Double and Fraction. Notice that RicoFraction is just a simplification of RicoDivide(RicoInteger, RicoInteger). This isn't clear, but I should get on with differentiating and see what happens.
+
+showMethods("D")
+-- not a generic S4. We'll need to create it.
+
+x <- rico.norm()
+D(x+3)
+
+### 10/4/2012 ###
+
+The generic method is not firing up. Why?
+
+setGeneric("D", function(x, y) standardGeneric("D"))
+setMethod("D", signature(x = "Rico", y = "Rico"),
+          function(x,y) {
+            new("Rico", id = .Call("differentiateRico", x@id, y@id))
+          })
+
+The prototype in setGeneric must match the signature (x,y) in setMethod.
+
+Now we need to get a list of all the basic rv's in an expression. If it's exactly one then we can differentiate without mentioning the underlying else we have issues. This means we have to remove the rv_map thing from the build expression since we intend to out-source it. Are you sure we can't do virtual functions? Actually we can as long as we call from outside 'extern "C"'
+
+Here's a problem to address. We have RicoNeg as a unary operation. What happens when we form
+X - (-3) ? That is, we subtract a negative number? RicoNeg is not involved. Should it be? It has the appropriate rules.
+
+I think where this is heading is: 
+RULE: ALL NUMBERS ARE NON-NEGATIVE AND IMMUTABLE (including fractions). Use RicoNeg for negatives.
+
+1) How do we enforce this? On constuction of course!
+2) How does this impact fractions, reciprocals, sqrt's?
+
+This implies the following
+RULE: ALL POWERS ARE NON-NEGATIVE AND IMMUTABLE. Use RicoReciprocal for negatives.
+
+There seems to be three classes of expressions: numbers, rv's and other (expressions).
+
+I don't really like "RicoReciprocal" since I may want 3/X which is really RicoDivide.
+And what about 3 * 2/X ? Shouldn't this be simplified right away? What is going on?
+
+### 10/5/2012 ###
+
+Reading ~/develop/notes/CAS/liska.pdf
+
+### 10/8/2012 ###
+
+Let's create a number semi-base-class. This means it will have Rico as a proper base-class, but above that is the RicoNumber class. OK. That's been done. We need to have operator overload.
+The goal is to know, but not usually care what type of number is at play.
+
+We can do some work with RicoNumber, but the important step is to make sure to create as simple an expression as can be known at time of creation locally.
+
+The first step is 3 + 4.2. The first thing that comes up is that we may not return a RicoAdd object, in this case for example. So how do we handle this? If we do operator+ on the first Rico we have drilled down to the RicoInteger::operator+ and now have to route to the correct routine. This is various Rico::operator+ functions, but we can't do this from CreateRico since it's extern "C". We need to build this into Rico.cpp. Let's see what we can do.
+
+I think we still need to do switching to get the operators to work. The virtual functions can't work in the case of <Rico> + <Rico> since the two types are not known until runtime. A problem is that RTTI is not universally supported and it's really just a switch statement, I think. I think to get going we'll revert to switching. Let's see how it shakes out.
+
+It would be good to route the R/C interface to the correct operator+ so that it can be used internally. There aren't that many cases: We can route to BasicRV, Number, then we have generic expression. We should draw out the structure we're really interested in building.
+
+Notice that we're putting is a whole lot of extra code just to effect local simplification. Maybe it would be better to put in a general simplification mechanism rather than a partial simplifier. Let's think that step through for a moment. We will need to create internal Rico objects during the simplificiation process. It would be good for them to be dumb so we don't have weird results.
+
+Now the structure.
+
+Rico \
+     |- BasicRV |= various
+     |- Number \ 
+     |	       |- Integer
+     |	       |- Double
+     |	       L- Fraction
+     L- Function \
+                 |- Add
+	 	 |- Subtract
+ 		 |- Multiply
+		 |- Divide
+		 |- Power
+		 |- Negate
+		 |- Exp
+		 L- Log
+		
+
+x <- rico.num(3)
+x + 2
+
+Now we differentiate.
+
+x <- rico.norm()
+x + log(x + 3)
+D(x)
+
+### 10/09/2012 ###
+
+x <- rico.norm()
+y <- x + 3
+D(x*y)
+
+For D(x^y) we need to have (poorman) RTTI. This means Rico must be told.
+Getting closer. Have RicoPower differentiated. Turns out to be easy if you don't pre-simplify.
+Still have the unary functions to go. At some point I should write a test.
+
+### 10/11/12 ###
+
+On-demand Rico.id means id's will no longer be issued automatically and only generated on demand.
+This means that the collection of BasicRV's needs to be modified...unless they are automatically
+given an id. A problem is the const for differentiated objects. I would like it to be const, but I can't if I want to issue an id. This means we have a problem. The id of a Rico object can't live within a Rico object. We could create a static object that maps Rico* to id.
+
+Notice that only basic rv's are shown in the printed expression. This means that other objects that need an id-code could be issued some other code (negative id?). Seems like a lot of fuss.
+Actually, since we can distinguish BasicRV's from Function and Number we can switch. Done.
+
+To prepare for the expression simplifier we have a look back at the RticPHoX code.
+        X.replace_negs();
+        X.collect();
+        X.pummel();
+        X.factor();
+
+replace_negs() : turns NEG(X) into MUL(X,-1) then recurses down.
+collect()      : // Ensure that at each level we have {0,1} DOUBLES, {0,1} MULL, {0,1} ADD
+	         depth-first recursion
+		 collapse MUL's and ADD's
+
+### 10/12/2012 ###
+
+Before simplifiying, let's take the macro-view and see what the algorithm looks like form the user point-of-view. To show an expression we currently call,
+
+  void show_Rico(SEXP id) {
+    string str = RICO(id)->getDefinedExpression();
+    Rprintf("%s", str.data());
+  }
+
+We could respond to some keywords, our first attempt at supporting keywords, and make "simplify=TRUE" the default. In fact no keywords yet, just the default in place of the current result of raw display. Actually, I think the keywords thing should be handled in Rico.R and a simple call to different functions is in order.
+
+The deal is that we have a const Rico* so we can only call constant functions. I think we need to make a copy that can self-mutate. The BasicRV's are not copied, but simply referred to, but all the other types are copy-constructed. We will not have a copy constructor for the BasicRV's.
+
+The way to implement the copy construction is to have a virtual .copy() function. This gets us up to the level where are know the specific Rico type.
+
+public:
+  virtual Rico* copy() const = 0;
+
+Well, this won't work. What we'll have to do is to be unmutable. Each simplification step will return a whole new expression tree. Good thing we're not issue id's. What about memory leakage?
+
+We need to delete all these intermediate expressions we're creating unless they're intended for R.
+
+It's curious that we're passing around constant pointers, not constant references. Why?
+
+Notice that we can actually mutate object after construction. We just can change what the Rico* points to. This means we could impress an id-code onto any object especially a BasicRV. after-the-fact, but pretty much on-create. What to do?
+
+### 10/15/2012 ###
+
+In library/snippets/SmartPtr constructed a boost-ed test of smart pointers.
+The test code compiles. I got it from ...
+
+http://www.codeproject.com/Articles/8394/Smart-Pointers-to-boost-your-code
+u: tom@tomfielden.com p:gl...a
+
+A shared_ptr implements a reference count.
+A scoped_ptr automatically deletes when it goes out of scope with penalty(?)
+An intrusive_ptr is lighter weigth version of shared_ptr, but off-loads reference counting.
+A weak_ptr works with shared_ptr to break circular references.
+  Could use this when pointing to already-managed resources such as BasicRV and some Number's.
+Also, shared_array and scoped_array.
+
+Let's start with scoped_ptr, easiest. Advantegeous when using abstract objects, here's why,
+{
+  scoped_ptr<Base> a( mode ? new DerivedA : new DerivedB );
+  a->polymorphic_function();
+}
+
+Have walked throught the SmartPtr code updating it for my understanding. Nearly there, but not
+clear on the circular reference. The weak pointers are necessary for me. It's now in the codebase.
+
+To understand the need for weak pointers we create a pair of objects with circular pointers,
+
+A -> B and B -> A
+
+Now we create pointers to A and B,
+
+C -> A and D -> B 
+
+Picture the situation as,
+
+C ---> A
+       ||
+D ---> B
+
+If we reset the D pointer we have
+
+C ---> A
+       ||
+       B
+
+The B object still has one reference from A. If we reset C we are left with A=B and eventhough
+C and D were declared on the stack, when they go out of scope A and B will be locked together, but
+unknown to the rest of the system. Leaked memory just like a pointer declared on the heap and
+undeleted by exiting of scope.
+
+If we had broken one of the circular references, then the reference counter would naturally reach
+zero when D/C or C/D were reset in sequence.
+
+C ---> A
+       ^
+D ---> B
+
+No circular reference means when we reset D, B will automatically be deleted.
+
+C ---> A
+
+And when C is reset or goes out of scope, A will be deleted.
+
+With the child holding only a Weak pointer to the Dad there is no circular lock. 
+The deal is, though, we must request a lock() and obtain a Shared ptr to provide access.
+
+If we need to pass a raw (real) pointer to a function we can use _ptr.get(). We do as we please
+as long as we follow the rules. The safest thing is to pass in the raw pointer to a const Foo *.
+
+### 10/16/2012 ###
+
+Let's introduce my smart pointer boost to Rico.
+We need to include a Makevars file that sets 
+PKG_CXXFLAGS = -I .
+
+rico.testSmartPtr()
+
+Now we build another test, this time involving Rico objects. The goal is to make sure that virtual functions work through RicoPtr's. The must...Let's just press on.
+
+The registry is an int->RicoPtr map. Where int > 0 means BasicRV and int < 0 means other R-owned
+objects. The registry is the proxy owner for R-created objects. We don't yet have a recylce-bin for registered Rico objects that have been relinquished by R freeing up their id-code.
+
+Only registered Rico objects have id codes. All BasicRV's have id codes by design so this is where we expect to find them. The question is; how to set the id codes in the BasicRV's? Not all registered objects are BasicRV's. Many kinds are.
+
+Let's start using the new registry.
+
+### 10/17/2012 ###
+
+Notice the difference between these two:
+typedef boost::shared_ptr<const Rico> RicoPtr;
+typedef boost::shared_ptr<      Rico> RicoPtr;
+
+Nowhere do we have "const RicoPtr".
+
+x <- rico.norm()
+y <- sqrt(x)
+y
+y
+*** segfault: memory not mapped ***
+It's not sqrt(x), it's something else. It's the second call to x.
+
+Left off with:
+string RicoSqrt::getExpression(RICO_OP pop) const {
+
+### 10/18/2012 ###
+
+Still sleuthing the bug. Erich offered an alternative Smart Pointer template. Not here yet...
+
+The problem is that we somehow forgot how to use virtual functions. This suggests that something was default constructed rather than properly copied. Not sure when or how. I'll try the 
+http://www.boost.org/doc/libs/1_51_0/libs/smart_ptr/shared_ptr.htm
+Best Practices and see if that helps. Notice the following practice: 
+
+*No unnamed temporaries:
+
+void f(shared_ptr<int>, int);
+---
+void ok()  { shared_ptr<int> p(new int(2)); f(p, 42); }
+void bad() { f(shared_ptr<int>(new int(2)), 42); }
+
+- Reason: the order that functions evaluate operands is unspecified and could throw an exception.
+
+Wait: RicoPrt(this) looks very suspicuous:
+The optional intrusive counting support has been dropped as it exposes too much implementation details and doesn't interact well with weak_ptr. The current implementation uses a different mechanism, enable_shared_from_this, to solve the "shared_ptr from this" problem.]
+cwww.boost.org/doc/libs/1_51_0/libs/smart_ptr/shared_ptr.htm
+
+### 10/19/2012 ###
+
+Erich sent me refcnt.h and testrefcnt.h (in ./library/snippets/SmartPtr)
+
+### 10/22/2012 ###
+
+I think I found the "virtual bug". I'm returning a "this" pointer and wrapping it in a shared_ptr. This is not good. There is a funky way of dealing with this obvious problem in Boost, but it's non-standard and I have a better way.
+Any function that might return or otherwise expose its "this" pointer must have the containing shared_ptr passed in as an argument. It's the same technique as used in "C" to create object-like behaviour. Let's see if that does the trick.
+
+The "this" issue applies to,
+collectBasicRVs
+differentiate
+
+%> r
+x <- rico.norm()
+y <- sqrt(x)
+y
+y
+
+It works! Now to exchange Boost for Erich. That works, too.
+
+Now, let's see if we can get some testing regimen in place. We have UnitTest, but it's not grabbing me. Maybe I just don't want to think about it right now. It's getting close time, though.
+
+Let's create a Rico function that gets certain subsets of operands/params.
+RicoFunction::operandsWith and RicoFunction::operandsWithout
+are trying to test membership in vector. It's not .contains(...). What is it?
+Once we figure that out we then have to construct vectors to pass in easily else not worth it.
+
+### 10/23/2012 ###
+
+Need to get better at vector processing. Let's extend std::vector to myvector.
+
+%> r
+rico.test()
+
+Now we want to find out what kinds of vector operations we want to support.
+One thing to support is the concept of a mask. vector<bool>. No problem. The thing that's new is the mask-based indexing. Can we iterate over an operand vector and test for true?
+This is different from indexing over integers. So we can't just test for ==0.
+
+### 10/24/2012 ###
+
+How do we pass arrays? Not sure.
+What did we want to do with these things again? We can pass a bool-vector. How do we create one?
+We need to ask for a "mask" This will be a MyVector<bool> (we could allow 2D). What we ask for is
+get arguments by type.
+
+Let's try to get MyVector in place of vector (why? consistency?)
+A reason is to perform iterations without that damn ::iterator blather. Let's see...
+### 10/29/2012 ###
+
+I don't think I need to embed the source code of the testing framework in my project, just support it. This will leave the testing elements in my project, but the testing framework elsewhere.
+
+Here's an interesting snippet.
+%.o : %.cpp
+        @echo $<
+        @$(call make-depend,$<,$@,$(subst .o,.d,$@))
+        @$(CXX) $(CXXFLAGS) -c $< -o $(patsubst %.cpp, %.o, $<)
+
+UnitTest++ looks interesting. Lightweight is good. Simpler to use than CppTest.
+
+see:
+http://www.gnu.org/software/make/manual/make.html#Automatic-Prerequisites
+apparently g++ -MM will generate prerequisites automatically.
+
+We need to get better control of the Makefile for our project else no dependencies!
+
+To build Rico we execute
+/usr/lib/R/bin/R
+R_HOME=/usr/lib/R
+. "/usr/lib/R/etc/ldpaths"  ->  /etc/R/ldpaths  ## This is no big deal
+exec sh "/usr/lib/R/bin/Rcmd" "${@}" ;;
+## Somehow we get to:
+/usr/lib/R/bin/INSTALL
+## But this just feed into R and then...
+/etc/R/Makeconf
+
+The basic message is that there may not be a nice way to do the auto-make-depends stuff, maybe.
+The Makevars is really a makefile. The first step is to include a dependency file (-M option).
+
+Generate dependencies manually,
+g++ -MM -I/usr/share/R/include -DNDEBUG -I . -fpic -O3 -pipe -g *.cpp > DEPS.mk 
+
+To get sed to replace end-of-line we need to escape $ with $ to form $$. Similarly with \ to \\.
+	@-sed -e 's/$$/ \\/' <  $(SRC)/SOURCES.mk > $(SRC)/SOURCES.mk
+
+Now we have the Makevars into a Makefile by including the target and explicit dependencies.
+The dependencies are semi-automatic (make depend) into phox/src/SOURCES.mk and phox/src/DEPS.mk 
+
+### 10/30/2012 ###
+
+How to work with UnitTest++.
+
+We could try to test the C++ files outside the context of R. I think I still like the rico.test() idea. The question now is where to put UnitTest++. It comes with it's own test.
+The first thing to realize is that UnitTest[++] will need to run subordinated to the R probject.
+I can refer to R-Matrix for an example of subordination. I will first need to push the Makefile of UnitTest++ down a level and the copy it into the project. I'll hold off svn'ing it.
+Oddly, the UnitTest name is taken by a .cpp and .h file I created. It will be replaced soon.
+
+In UnitTest/ we have the Makefile behaving globally. It's not trivial and I want to try it out as-is first. It works and the tests fire as well.
+
+To subordinate. First we need to make sure that the tests of UnitTest are not built and run.
+In the top Makevars file we just need to mention the libraries, for example,
+PKG_LIBS = $(SUBLIBS) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
+SUBLIBS = $(SUBDIRS:=.a)
+Then we need to override "all:
+all: $(SHLIB)
+$(SHLIB): $(OBJECTS) sublibs
+sublibs: subclean sublibraries
+
+sublibraries:
+        @for d in $(SUBDIRS); do \
+          (cd $${d} && CFLAGS="$(CFLAGS)" CXXFLAGS="$(CXXFLAGS)" MkInclude="$(MkInclude)" $(MAKE) library) || exit 1; \
+        done
+
+clean: subclean
+        @-rm -rf .libs _libs
+        @-rm -f *.o $(SHLIB)
+
+subclean:
+        @-rm -f *.a
+        @for d in $(SUBDIRS); do \
+          (cd $${d} && MkInclude="$(MkInclude)" $(MAKE) clean) || exit 1; \
+        done
+
+Notice we're calling the "library" rule in the subordinate Makefile in each subrirectory. We'll need to adjust the location of the .a library file. I think we may need to push the .a file up a level so it can be picked up more easily. This means that the subordinate Makefile must know to do this somehow. A separate library rule for R. We could just do a $(patsubst ...) and not have to be so intrusive. On the other hand we need to make sure to override the CXXFLAGS, etc.
+
+After all that I've decided to just make the library manually. It's too much trouble for me to figure out how to subordinate it. I'm just happy I got as far as I did.
+
+Now what? We need to do the simplification. I need to pick this up from scratch?
+As I recall before I was interrupted, I have a transformation to apply to a copy of the original expression. If we go through and remove all A+0 and A*1 and replace them with A we have our first transform.
+
+### 10/31/2012 ### Halloween! ### 11/1/2012 ###
+
+--------Simplify, Simplify, Simplify, then stop--------------------------------------------------
+
+Supported ops: +,-,x,/,^,Sqrt
+Assume: +,x   are not unary, possibly multinary
+        -,/,^ are binary
+Notes:  +,x imply binary infix operations,
+	S(), P() are multinary Sum and Product, respectively. Never unary.
+	NOP means No Operation, i.e. Do nothing.
+	Numeric nodes:  2,3,5,...  could be double or fraction, etc.
+	Function nodes: A,B,C,... 
+	RV nodes:       X,Y,Z,... 
+	All nodes immutable.
+	All rules return a "hit" flag if they fire and all rules repeated from the top until clean.
+
+*) NoDivide
+   A/5 => Ax{1/5}
+   5/A => 5x(A^{-1})
+
+*) NoNeg
+   Neg(A) => -1xA        -- see: Coefficient rule below. Not required.
+   Neg(3) => -3          -- the 3 is not mutable, we simply replace with -3 instead.
+
+*) NoSubtract
+   A - B => S(A,-1xB)
+   A - 5 => S(A,-5)
+
+*) NoSqrt
+   Sqrt(A) => A^{1/2}
+
+*** Operations remaining: +,x,^
+
+*) Flatten
+   A+(B+C) => S(A,B,C)
+   Ax(BxC) => P(A,B,C)
+
+*) Distribute
+   Ax(B+C) => S(AB,AC)
+   Ax(A+B) => S(AA,AB) : let MP handle the AA => A^2
+   Ax(B+C)x(DxE)x(F+G) => S(ABDEF,ACDEF,ABDEG, ACDEG) : General Case
+
+*) DtM [DoTheMath] -- apply arithetic to Numbers, leave numbers up front.
+   S(3,A,A,2) => S(5,A,A)
+   S(3,5)     => 8
+   S(3,-3)    => 0
+
+   P(3,A,2)   => P(6,A)
+   P(3,5)     => 15
+   P(5,1/5)   => 1
+
+   3^2        => NOP 
+   3.0^2      => NOP
+   3^100      => NOP
+   3^{1/5}    => NOP
+
+   Example: (A/5)*3 =NoDivide> (A*{1/5})*3 =Flatten> P(A,1/5,3) =DtM> P({3/5},A)
+
+*** Numbers appear at most once in: +, x, S() and P(). 
+
+*) OZ (Ones and Zeros) - applied repeatedly until complete.
+   S(A,0,B)    => S(A,B)
+   S(A,0)      => A
+
+   P(A,1,B)    => P(A,B)
+   P(A,1)      => A
+   P(A,0)      => 1   : introduces a possibly removable 1. Will signal a 'hit' and swept by a rule
+
+   A^1         => A
+   A^0         => 1   : introduces a possibly removable 1
+   0^0         => NOP
+
+*) MP (Multiples and Powers) -- Depth First.
+   S(A,B,A)       => S(2A,B)
+   S(2A,B,3A)     => S(5A,B)
+   S(-1xA,A)      => 0xA  =OZ> 0
+
+   P(A,B,A)       => P(A^2,B)
+   P(2,A,B,A^2)   => P(2,A^3,B)
+   P(A^{-2},B,A)  => P(A^{-1},B)  
+   P(A+B,A)       =Flatten> P(A^2,AB) : NOP
+   
+   2x2^A          => 2^{A+1}         : Not new
+   AxA^B          => A^{B+1}         : Not new
+   P(3A,A^B,C)    => P(3A^{B+1},C)   : most general?
+
+   Notes : Need operator==(). Must have A+B == B+A, A*B*C == B*A*C, etc.
+   	   Need an op to detect A "in" 2xA^{-3}
+
+Factor: Goal: L1*d + L1*L2*d^2 + L1*L2*L3*d^3 =Factor> L1*d(1+L2*d(1 + L3*d))
+
+--- Discusssion ---
+Suppose we allow every object to have a numeric coefficient and an arbitrary power? This only makes good sense if we can totally replace the construct 3xA^B externally. We can address the power (^) by making sure Pow(A,B) is removed from the tree else we have a muliplicity of cases.
+But what about A*B^2? Nothing, it's just P(A,B^2). What if we split the case and say that A^5 is contained within A, but A^B is external? It makes sense in part because A^3 has a leaf as power, but then so does A^X. On the other hand, A^3 has a constant as power. That's a big difference. Does it matter to us? If we allow general powers we open ourselves to all the complexity of the full tree, but as a special case as well as general case. Let's put in numeric powers for now and keep an eye on it. OK, eyed. Nodes are sharable and immutable so we *don't* decorate!
+--- Discusssion ---
+What if we allowed unary ops and promised to clean them up in a simplification rule?
+--- Discusssion ---
+Do we upgrade Double to Int if possible? Isn't this a failing upstream?
+Conclude: leave alone.
+--- Discusssion ---
+Do we have a rule that simplifies all fractions? It would simply be a rule that fires once at beginning and once at end? Maybe just once at end. Maybe just for display/reporting purposes.
+
+We need to implement operator== and test it in R. DONE.
+
+The problem now is to deal with the following case:
+    1/5*A*3 == A*{3/5}
+Clearly we need some form of simplification to be applied that detects equivalence.
+The only cure may be we must apply more than one pass and restart the whole chain if any hit.
+
+### 11/5/2012 ###
+
+Let's talk implementation of the above transformation rules.
+
+NoDivide: A/5 => Ax{1/5}, 5/A => 5x(A^{-1})
+          In-place replace. We need to take an existing expression B and if Divide, transform.
+	  Depth-first. If RHS is a number, convert to Fraction.
+	  	       If RHS is not a number, convert to negative unit power.
+
+NoNeg: Neg(A) => -1xA, Neg(3) => -3
+       If number, replace with negative version. Could have a negative constructor.
+       Else replace with product of -1 and A
+
+NoSubtract: A - B => S(A,-1xB),  A - 5 => S(A,-5)
+	    Same as NoNeg, but replace minus with plus.
+
+NoSqrt: Sqrt(A) => A^{1/2}
+	A straight power replacement. We could consider HALF as a permanent along with ZERO, ONE
+
+Flatten: A+(B+C) => S(A,B,C), Ax(BxC) => P(A,B,C)
+	 Can be top-down since it reaches down into parameters of sum and product.
+	 We hold the S() or P() and possibly replace it with a new one with a new parameter list.
+	 The trick is list concatenation. Need MyVector::operator+=. Have it.
+	 S(A,(B+C),D) => S(A,B,C,D), If a operand is an S() we retain only it's operands.
+	 We stand at top and call for Flatten, then recurse into each param.
+
+DoTheMath: S(3,A,A,2) => S(A,A,5), S(3,5) => 8, S(3,-3) => 0
+	   We need to identify numbers and not. We need to partition the operands.
+	   Then we perform numeric sum (product). If there are any non-numbers we create
+	   a new S() and add the those operands else we just leave the resultant number.
+	   3^5 is OK, but 3^100 is not. We'll need some thought here. Perhaps we should just
+	   focus on fractions like 5^{-1} => {1/5}. We do need to reduce fractions on-create.
+	   Since Rule::OZ follows we could leave zeros and ones inside S(A,0), P(A,1), A^1, etc.
+
+OZ: S(A,0,B) => S(A,B), S(A,0) => A, P(A,1) => A, P(A,0) => 1, A^0 => 1, A^1 => A
+    The last rule is interesting since A could be a random variable with some of it's probability 
+    concentrated at infinity, a pathalogical case. So, not only are we detecting numeric operands,
+    we're testing them for Zero or One. This is very similar to the DoTheMath rule.
+    Perhaps this rule can be incorporated into the DoTheMath rule since it's a special case.
+
+Coefficients: P(A,2,B) => 2xP(A,B)
+	      It important to put the unique numeric values into a consistent location.
+	      Again we're scanning all the operands for numeric values. In this case zero or one
+	      numberic values. This seems like just another DoTheMath step. The result of
+	      DoTheMath would then we have any number out front in a binary product or
+	      consistently the first element of S(). It's a declared side-effect of DoTheMath.
+	      This rule is noxious to the Factor rule yet necessary for the MP rule. 
+	      I think we should just put the numeric element up front and not go overboard!
+
+MP: (Multiples and Powers) S(2xA,B,3xA) => S(5xA,B), P(3xA,A^B,C) => P(3xA^{B+1},C)
+    This is where we need to be able to identify the base expressions beyond coefficients and
+    powers. We will have a universal concept of "base expression" in Rico and simply return it.
+    Perhaps we should return a triple (coefficient, base, power). 
+    Default coefficient & power are One. Could use Pair<T> and Triple<T>
+    Now operands in S() and P() are decoded into a MyVector< Triple<RicoPrt> >. 
+    Next we begin an n^2 operation. We need a structure that allows deletion from the middle
+    a linked-list, that is. Maybe I shouldn't do MyList or MyVector. Just use STL better.
+
+Factor: A*d + A*B*d^2 + A*B*C*d^3 =Factor> A*d(1 + B*d(1 + C*d))
+	The situation is sum of products S(P(), P(), ...)
+	I think we need to create a master list of unique operands 
+	then we can replace each list of product operands with an index list into the master.
+	Ex: A*B + B*C + C*D
+	Master: (A,B,C,D)  -- in matrix form -- | A B C D |
+	P1:     (1,2)                           | 1 1     |
+	P2:     (2,3)                           |   1 1   |
+	P3:     (3,4)                           |     1 1 |
+	We can also create the transpose (reverse lookup) where
+	A:(1), B:(1,2), C:(2,3), D:(4)
+	We've picked a good example since we don't have a unique factoring,
+	AB+BC+CD == B(A+C)+CD == AB+C(B+D)
+	In the case of AB+BC+BCD+DE, A:(1), B(1,2,3), C:(2,3), D:(3,4), E:(4)
+	Since B appears in the most expressions we use that first:
+	AB+BC+BCD+DE => B(A+C+CD)+DE
+	Since B dominates it absorbs it's expressions: (1,2,3) leaving expression 4 untouched.
+	Let's look at the expression matrix for this case,
+	| A B C D E |
+	| 1 1       | => B * | A B C D E | + | A B C D E |
+	|   1 1     |        | 1         |   |       1 1 |
+	|   1 1 1   |        |     1     |
+	|       1 1 |        |     1 1   |
+	What happens is we need to recurse, but we've already done a lot of work so we can
+	take advantage and hand the submatrix to the formatter.
+	That is: A+C+CD => A+C(1+D)
+	The remaining submatrix is just DE and it's only one expression.
+	A submatrix is really a row partition.
+	---------------------------------------------------------------------------
+	Let's consider the target expression.
+	Ad + ABd^2 + ABCd^3
+	The matrix is then is below. Notice we use numbers to designate powers.
+	    | d A B C |
+	    | 1 1     |
+	    | 2 1 1   |
+	    | 3 1 1 1 |
+	We see that d appears most often. We could be dumb about this and just factor d
+	    | d A B C |
+	d * |   1     | = d(A + dAB + d^2ABC)
+	    | 1 1 1   |
+	    | 2 1 1 1 |
+	Next is A
+            | d A B C |
+	A * |   0     | = A(1 + dB + d^2BC)  -- how do we know about the 1, A^0?
+	    | 1 0 1   |
+	    | 2 0 1 1 |
+	Next is d
+	    | d A B C |
+        d * | 0   1   | = d(B + dBC)
+	    | 1   1 1 |
+	Now B,
+	    | d A B C |
+	B * |     0   | = B(1 + dC)
+	    | 1   0 1 |
+	Putting it all together,
+	Ad + ABd^2 + ABCd^3 = d(A(A^0+d(d^0B(B^0+dC)))) =Flatten+> dA(1+dB(1+dC))
+	Simple steps: Form a sparse matrix for the expression: unique variables for cols, expr=rows
+	       	      Find the most used variable, reduce it's count by the min usage -> some 0's
+	       	      Pass affected rows to sub-expression (recursion)
+		      Split off un-affected rows and continue forming the sum.	       	      
+	       	      If there's only one 0 in the expression/row write a 1.
+	       	      If there's more than one 0 in the expression, ignore it.
+		      After writing the expression, set all 0's to blank.
+	---------------------------------------------------------------------------
+	Let's try something harder / more general,
+	3AD + 4AB^2D + 7A^2BCD^3
+            | 3 4 7 A B C D |
+            | 1     1     1 |
+            |   1   1 2   1 |
+            |     1 2 1 1 3 |
+	OK, here's the breakdown. A is most common. Remove A from all affected rows.
+	    | 3 4 7 A B C D |
+	A * | 1     0     1 | = A(3D + 4B^2D + 7ABCD^3)
+	    |   1   0 2   1 |
+	    |     1 1 1 1 3 |
+	Reset the zeros. D is next,
+	    | 3 4 7 A B C D |
+	D * | 1           0 | = D(3 + 4B^2 + 7ABCD^2)
+	    |   1     2   0 |
+	    |     1 1 1 1 2 |
+        The next is to realize that B dominates and makes the top row a singleton.
+	    | 3 4 7 A B C D |
+	B * |   1     1   0 | = B(4B + 7ACD^2)
+	    |     1 1 0 1 2 |
+        Since all remaining rows are singletons. The result is,
+	    A(D(3+B(4B+7ACD^2)))
+	The Flatten rule will clean up the expression,
+	    AD(3+B(4B+7ACD^2))
+	---------------------------------------------------------------------------
+	One more that shows how to partition the rows,
+        3AC+A^2+BC+B
+             | 3 A B C |
+             | 1 1   1 |
+             |   2     |
+             |     1 1 |
+             |     1   |
+	 Since A is the first most common...can we compare the power level. 
+	 Not relevant unless min is 2. In the partition we find B dominates,
+	     | 3 A B C |
+	 A * | 1 0   1 | = A(3C + A)
+             |   1     |
+         +
+	     | 3 A B C |
+         B * |     0 1 | = B(C + 1)
+             |     0   |
+	I think we're done. There are no non-singletons so we just finishe forming the expression.
+        3AC+A^2+BC+B = A(3C+A)+B(C+1)
+	Had we noticed C dominates we get a different expression.
+	C(3A+B)+A^2+B
+	---------------------------------------------------------------------------
+	Let's look at the impact of Factoring on Multiples
+	2A+B+3A
+             | 2 A B 3 |
+	     | 1 1     |
+	     |     1   |
+	     |   1   1 |
+	Since A dominates we have 2 rows and a singleton
+             | 2 A B 3 |
+	A *  | 1 0     | = A(2 + 3)
+	     |   0   1 |
+	+
+             | 2 A B 3 |
+	     |     1   | = B
+        And the result is,
+	2A+B+3A =Factor> A(2+3)+B =DoTheMath> 5A+B
+
+--- Discusssion ---
+How do we compare two expressions? We need to find some canonical form. As we've seen from the Factoring rule we can't expect a factored expression to be canonical. I'm wondering if we need the Coefficient rule at all. Clearly DoTheMath is needed and desired. The OZ rule is needed.
+The Multiples of MP can naturally be handled by Factoring and then DoTheMath.
+
+### 11/6/2012 ###
+--- Discusssion ---
+Before Rule::MP we have S(), P() and ^ flattened, without extraneous 0 and 1, numbers up front.
+Question: do we have a canonical form? We need to compare: A == A' ?
+	  Let's try to find a counter example.
+	  We already have the notion that S() and P() need not be in order, but collected terms.
+	  We have the concept of the expression triple:
+	  If A = 2B^3 then A == (2,B,3)
+	  But 2B^3 + 5B^2 does nothing, only 2B^3 + 5B^3 = 7B^3. Modulo numeric coef.
+RESOLVED: Counter Example: AB + B == B(A+1)
+    	  This means we need the distributive law applied before MP. Now part of Rule::Flatten.
+	  So, how do we handle 2A + 3A versus 2AB + 3A -really> 2C + 3B
+     -->  Sum is modulo numeric coefficient in a binary product. 2A + 3A =MP> 5A
+     	  Product case 2A*3A^5 =DtM> 6A*A^5
+	  This means that we find matching expressions modulo power (versus coef).
+	  This means we don't need Triple<T>, just Pair<T>.
+	  Can we now create two equivalent expressions we can't equate? OPEN.
+	  
+--- Discusssion ---
+How about the sparse integer matrix?
+            | 3 4 7 A B C D |
+            | 1     1     1 |
+            |   1   1 2   1 |
+            |     1 2 1 1 3 |
+We first have to build a list of unique expressions.  
+Rows represents sums, colums represent products and values represent powers.
+We need to partition by row so this is the top-level idea, but we work columnwise as well.
+We need to count non-zero rows by column, find min-value for a row-wise submatrix.
+The matrix as shown is a composite structure, the header is a list of expressions (unique).
+This is basically a pivot table. The most appropriate structure seems like a row-wise 2D array.
+We actually have a sparse table. A vector of RicoPtr's, and a vector of integer vectors.
+The best practice is to find some general structure once we find multiple uses else local.
+
+Languages: CoffeeScript, Clojure, Haskell, GO, and HTML5
+
+--- Discusssion ---
+How to create the Simplify superstructure? Each rule applies to an expression tree subset. Some rules preclude others. Some rules are depth-first, some are re-apply. All rules return a flag that says they operated. A weak feature is to be able to return which specific rules need to be applied because a current rule operated. This requires broad knowledge, which I don't want to imbue. Is the base class to subclass architecture applicable. Is the visitor pattern right?
+
+### 11/7/2012 ###
+vRicoPtr := MyVector<RicoPtr>
+uses: 
+  RicoPtr   x()        const {return m_params[0];}
+  RicoPtr   y()        const {return m_params[1];}
+  RicoPtr   get(int i) const {return m_params[i];}
+  operator[]
+  operator+=          (RicoFunction.cpp, line 30)    really just push_back()
+  push_back(RicoPtr)  (RicoFunction.cpp, line 41)    std::list<T>::push_back()
+  size()              (RicoFunction.cpp, line 76)    std::list<T>::size()
+Let's see what happens if we move to std::list<RicoPtr>.
+First thing that's missing is operator[]. It's not a vector. Let's look at operator[] usage.
+front() replaces x() and if size == 2 then back() replaces y() else *(++begin()).
+The get(i) function is really operator[]. The key is to replace the loop over two parallel lists. In operator==() we need this and we can build a list<> and remove elements as we go.
+
+MyVector is now OBSOLETE.
+
+### 11/8/2012 ###
+
+Now for the "sparse integer matrix". It's a special structure that I would rather create locally than to try and generalize. Once I get a general sparse matrix, I'll consider upgrading.
+Search for CreateRico::getId(" and replace all new contructors with static constructors. Done.
+
+New idea. Let's make RicoSumProduct a proper Rico subclass. This will be a form that Simplify will use rather than something created initially through user interaction. Testing is important here. This new subclass is clearly not a RicoFunction, but a direct subclass.
+
+RicoSumProduct is new class. Needs definition w.o stubs.
+First task is to construct it. Not sure where to go here. AB+BC+C. We build a vector of unique components. For each component (A,B,C, etc.) we walk the existing vector O(n^2) and decide if it's unique or not. Either way we return the index into the header vector for each component and build our row-map for each product/single.
+
+### 11/9/2012 ###
+
+There's already an STL std::pair<T,S>, dammit!
+
+### 11/12/2012 ###
+
+The new RicoSumProduct needs to be renamed and purposed as a Visitor: RicoSimplifyVisitor
+
+OK, we need to revamp the expression builder. The RicoFunction should track the nuances of L vs. R.
+  virtual string  getExpression()                          const = 0;
+  virtual string  getDefinition()                          const = 0;
+  virtual string  getDefinedExpression(RicoPtr This)       const = 0;
+The getExpression needs a clue about parentheses. It assumes not unless forced.
+if all the subclasses understand how to return definition components then we should get a list of definitions and spit them out.
+Why does getDefinedExpression(...) need "This" rico pointer?
+We should pass in a map<int, string> object for definition gathering. Then we'll build a list and sort the output.
+RicoBasicRV doesn't need "This"
+RicoNumber doesn't need "This"
+RicoFunction needs "This" in order to collectBasicRVs()
+It's there to support differentiation. If we want to get RicoPtr's of basic rv's in an expression we might ask this of a BasicRV and it won't know it's own RicoPtr. Why use RicoPtr's for this?
+Let's fix the printing part first, then differentiation.
+Wait a sec. BasicRVs are *always* registered!? I should literally hide their constructors. I kind-of do....Let's look. I've made all BasicRV's have id codes, but not registered. This is something for the R-interface, not for internal use.
+The problem with differentiation is this: if A = exp(B), Diff(A) = A*Diff(B)
+we need the RicoPtr of A in order to include it in the product A*...
+The WRT part can be an id code.
+Here's the rub. We need to be able to look up BasicRV definition from RicoID code.
+Hey, we don't need the registry for this at all! We can just pull out the id code issue from there.
+Need to work on the getExpression and getDefinition. Still incomplete.
+
+Now let's walk the parens issue in expression building.
+R starts with getDefinedExpression(). This first calls getExpression() then gathers all the basic RV's by id-code and spits out their definitions. The expression of a BasicRV is just X<id>. 
+TODO: A nice touch would be to spit out just the definition in the case of a singleton BasicRV.
+Suppose: exp(A+B). As a single-param function we will always wrap parens.
+Suppose: (A+B)*C versus AB*C, we need to communicate to the + from the * that we are multiplying.
+
+Reducing fraction to lowest terms: Euclid's Algorithm. Need gcd().
+
+### 11/14/2012 ###
+
+Getting ready for the big reduction push. Then on to the main event.
+
+How do we apply the distributive law in general?
+Flatten: Ax(B+C)*(D*E)*(F+G) => S(ABDEF,ACDEF,ABDEG, ACDEG)
+This is different form Flatten, it's Distribute.
+
+   (a+b)*(c+d+e)*(f*g*(h+i))*k  =>  (a+b)*(c+d+e)*(f*g*h+f*g*i)*k
+   				=>  a*c*(f*g*h)*k + a*c*(f*g*i)*k + ... + b*e*(f*g*i)*k  [12 terms]
+
+We only work at two levels: * at top and + below. Run Flatten again, but one level.(?)
+For each + we encounter, we create a multiplicity. We need a multi-index (one per)
+One the other hand we could have a mulit-for loop. We can do this in two passes, the first to gather non-add expressions, we just sweep those onto list "L" to be played out each pass.
+Then we create a sum of products. The "L" terms are replicated into each product.
+
+If the ith term isAdd then it introduces a multiplicity and must be advanced until completed and restarted until all such terms are exhausted. We to create a list of structs that can handle the fact that some terms are not isAdd. We have created a structure of: A<-B<-C<-D
+We need to hit the tail with "next" and have it return false when done. We can then set up a while-loop to keep clicking it forward. Then we need to read the structure. It would be nice to have it just peel off an expression. What if we create a head element? Not sure. It's just a little work, but we need to think a bit more and it's time to go.
+
+### 11/15/2012 ###
+
+The FOIL method is coming. We need a few features for our structured linked list.
+To ask if there are "more" we do depth-last. The top of the chain is definitive -> false.
+
+### 11/16/2012 ###
+
+The more()/next() mechanism is messed up. Suppose 9302. We ask more()? and the answer comes from the 2 since it's not END. {0,1,2,...,9} pointer implies about to return term.
+We're adding terms and incrementing all. Oops. And we weren't fully dereferencing a pointer.
+
+Next up: DtM (Do the Math).
+
+### 11/17/2012 ###
+
+Almost done with operator+ and operator* in RicoDouble. It's done. A little testing.
+Ones and Zeros is done. Except for the flag: should have  top-level call that auto-repeats.
+
+### 11/19/2012 ###
+
+Multiples and Powers (started). How do we multiply 2 and X9?
+
+### 11/20/2012 ###
+
+Let's move to a static implementation for RicoSimplifyVisitor and change the name to RicoSimplify
+Finally we move to factor expressions. It's almost fully written.
+
+Oh dear. We may want to factor constants. Is that reasonable? Ignore for now.
+We need to figure out how to find the most common expression and split the rows and if we're ambitious to optimize the header.
+
+### 11/21/2012 ###
+
+We're almost ready to Factor. Example:
+
+ABC+ABD+C -> {A B C D}
+             |1 1 1 0|
+	     |1 1 0 1|
+	     |0 0 1 0|
+
+We have count: [2,2,2,1] and tally is the same since powers are all 1. 
+If we say: first, biggest count then we factor A. This removes the A column and splits the matrix (by row and remaining columns) into one or two cases.
+
+ABC+ABD+C -> {A B C D} -> A * {B C D} + {B C D} -> A * B * {C D} + C -> A * B * (C + D) + C
+             |1 1 1 0|        |1 1 0|   |0 1 0|            |1 0|
+	     |1 1 0 1|        |1 0 1|                      |0 1|
+	     |0 0 1 0|
+
+I think we can ask the SumProduct matrix to build the expression for us. Notice that when the max column tally is one then we can still run the recursion, but we're done at that point and we can just spit back Rico::Add(<header>). How would we create a submatrix? We should give the submatrix the full header and then feed it the relevant rows. Remember the rows are sparse so it's ok.
+
+ABC+ABD+C -> {A B C D} -> A * {A B C D} + {A B C D} -> A * B * {A B C D} + C -> A * B * (C + D) + C
+             |1 1 1  |        |  1 1  |   |    1  |            |    1  |
+	     |1 1   1|        |  1   1|                        |      1|
+	     |    1  |
+
+This more technical form is a little harder to read, but it captures the idea that max-tally == 1 means that we're done. We subtract the max-tally value from the column and don't propagate 0. As we're splitting the rows into different SPM's we decrement by the minimax.
+
+AB+AC -> {A B C} -> A * {A B C} + {A B C} -> A * (B + C)
+         |1 1  |        |0 1  | 
+         |1   1|        |0   1|
+
+Notice we have to exclude the trivial SPM. We will create two SPM's and flick the different rows into each one. So the deal is that we figure out which column (expression) to factor, we then determine how much power to extract, but first we just split the rows and then, once the new SPM is create we decrement a column by a value. We can assume the column exists.
+
+### 11/22/2012 ###
+
+We're down to the end-game for Factor. The SPM is just about ready to construct the RicoPtr. There remains the issue of how to terminate. What happens when the "major column" is the only represents a single row? This is the end-game. No further factoring is possible. The 'major column' selector knowns this, but does not request it externally. Now know the max count so we can tell that if it's one, we're done. There may be more than one row-expression, but there's no more factoring possible.
+
+I'm in hot pursuit of the *big* expression and I can smell the end. The m_count and m_tally (being cached) are a pain in the ass and I'm considering ripping them out! If I have one more damn but because of them that's it!
+
+What do we do with an empty row after decrementing? Zero power really is a One!
+The key is we don't remove the zero's. They are 1's and we rely on SimplePower and SimpleMultiply to do the right thing with them.
+
+### 11/26/2012 ###
+
+I need to write up how the simplifier works. See: ./papers/RandomVariables/simplify.tex
+There's already a Makefile for RandomVariables. Just include simplify in the top file.
+(Kevin, Erica)
+
+### 11/27/2012 ###
+
+log(exp(X)) = X
+RicoOperators.h contains operator==(RicoPtr A, RicoPtr B)
+
+working on RicoPtr RicoSimplify::getDoTheMathDivide(RicoPtr A, RicoPtr B)
+working on RicoPtr RicoNumber::SimplePower()
+
+### 11/28/2012 ###
+
+Had a realization this morning: 
+*) first, get rid of divide (again). The Preliminary stuff can be done depth-first, but the other rules should be level-only. 
+*) There will be an overall depth-first when we ask for a total simplification of each operand of a function.
+*) We pull all simplifications back into RicoSimplify and not try to push them out to the various operations since there is not clear definition of what they are supposed to do or what other purpose they might serve.
+Q) Do we need more that one kind of "flag". Right now a "flag" means that a simplifying action has occured that cannot be contained within the current level. For example 3-32=>0, the returned zero might cascade more simplification upward. The "flag" means "kick it upstairs".
+Q) Why do we distribute when we later factor?
+   A(B+C)+B(A+C) => AB + AC + BA + BC => 2AB+AC+BC => A(2B+C)+BC
+   In the first expression A,B,C each appear twice.
+   In the final expression A only appears once, the others are still twice. An improvement.
+
+   5A(1+5B(1+5C)) => 5A(1+5B+5^2BC) => 5A + 5^2AB + 5^3ABC, a no-op since in lowest form.
+
+Many operations assume that all the operands are in "simplest" form, but what are the specifics?
+It's so tempting to do depth-first for each operation, just to achieve this "simplest" form.
+Let's survey the operations from this point of view,
+
+Preliminary        : Only needs to be done once since idempotent. Removed unrecreatable functions.
+Flatten            : A+(B+C) -> A+B+C, A*(B*C) -> A*B*C
+		     Suppose later B turns into a B1+B2 or B1*B2, respectively? Reflatten.
+Distributed        : A*(B+C) -> A*B + A*C
+		     Suppose later B turned into a B1+B2, we would have to redistribute.
+DoTheMath          : Sums and Products tend to get smaller possibly becoming numeric or even 0/1.
+		     We want some kind of trigger when this happens. This can impact flatten
+		     and distributed. If B = 3*B^0 -> 3 it may combine with C = 2
+		     This an argument that we want to restart from the top.
+OnesAndZeros       : Sums and Products involving 0 and 1 are reduced possibly to 1 or 0
+		     When an action is taken it needs to be flagged so that the process restarts.
+		     The goal is to drive the process to idempotency.
+MultiplesAndPowers : Relies on  operator== to identify equivalent terms to gather
+		     Coefficients and powers are temporarily separated from the base expression.
+Factor             : This is a tough one. It clearly undoes what Distribute does.
+		     Distribution and Factoring do not simplify, just change form.
+		     Is there a case where Factoring and then re-running the loop is a benefit?
+
+Consider: ((s+2)^2 + 1) / (s^2 + 4s + 5)^2
+if we don't expand (s+2)^2 we will not make any headway. TODO: This needs to be part of Distribute.
+Distribute: (s+2)^2 -> s*s + s*2 + 2*s + 2*2
+DoTheMath : -> s*s + s*2 + 2*s + 4
+Multiples : -> s^2 + 4*s + 4
+so far    : ((s^2 + 4*s + 4) + 1) * (s^2 + 4s + 5)^{-2}
+we need to restart
+Flatten   : (s^2 + 4*s + 4 + 1) * (s^2 + 4s + 5)^{-2}
+DoTheMath : (s^2 + 4*s + 5) * (s^2 + 4s + 5)^{-2}
+Multiples : (s^2 + 4s + 5)^{-1}
+Now we're ready to finish
+Factor    : (s(s+4) + 5)^{-1}
+
+Let's see. The reason we're considering expanding the (a+b)^2 term is because its context is sum. We're striving to put the sums-of-products form. Notice we can't recapture (s+1)^2+1 from (s^2+2s+3), at least not using current tools. The sums-of-products is a lowest form and thus canonical.
+
+I'm a little skeptical about negative powers. I think we need to segregate them by division. Division separates cases. This is just timidity. Nerd-up!
+A/B + C/B => (A+B)/B
+A/B * C/D => (A*C)/(B*D)
+
+### 11/29/2012 ###
+
+enum FTYPE {NEG, ADD, SUB, MUL, DIV, POW, LOG, EXP, SQRT};
+
+The Preliminary operator removes {NEG, SUB, DIV, SQRT} leaving
+
+          --------------------------------------------------
+Nodes:    | {ADD, MUL, POW, LOG, EXP} + {BASIC_RV, NUMBER} |
+          --------------------------------------------------
+
+The superstructure is a depth-first application of single-level operations.
+In fact, the next level down is a wrapper to feed binary operations.
+For example: (A1 + A2 + A3) + (B1 + B2)
+  performs: A1+B1 -> A2+B1 -> A3+B1 (conditionally), assuming A1 absorbs B1,
+  then    : A2+B2 -> A3+B2
+to create : {A1+B1} + A2 + A3 + B2  (where {...} denotes a single combined element)
+This is a variant of the FOIL method for addition and has the added sophistication of removing elements from the two lists to create a result list.
+
+Let's move SumProductMatrix to it's own file. DONE.
+Let's move the old Simplify stuff to it's own file. DONE.
+
+The assumption we can make at each level is that the elements are in their simplest form.
+We need the concept of base versus coefficient and power, especially numerical power.
+
+I think we need a coefficient splitter. What if we could pass in RicoPtr and have it return a RicoPtr that mimics the input A, but with the input term in the form of A => d*B where d=1 by default unless A is (A1+A2+...+An) -> (d1*B1+d2*B2+...+dn*Bn)
+Needs to be idempotent. Coefficients assumed to be in first product position, if present.
+
+Now we build the binary operations of SimpleAdd, SimpleMultiply, SimplePower, SimpleLog, SimpleExp.
+
+Need to test SimplePow(A,B). DONE.
+Need to test RicoNumber+RicoNumber. Almost DONE, except Double
+
+// (A1+A2+A3) + (3A2+B2) => A1 + 4A2 + A3 + B2 // collect and flatten
+Here's the game. We pass each input param (A,B) to coefficient splitter
+
+### 11/30/2012 ###
+
+First, the coefficient splitter needs to return Sum(P) regardless of number of elements.
+A question is what about (A + (B + C) + D)? The context is that the expression is either an A or B in the SimpleSum(A,B) operation. Since we are not prepared within the coefficient splitter to deal with expression collection and we expect depth-first simplificiation to apply it is therefore an error to present the coefficient splitter with a nested sum.
+OK, now we have to solve,
+(a1*A1 + ... + an*An) + (b1*B1 + ... + bm*Bm)
+
+### 12/2/2012 ###
+
+There are some cases to guide the next steps.
+recall: {ADD, MUL, POW, LOG, EXP} + {BASIC_RV, NUMBER}
+
+(a+b+c)^4   => a^4 + ... + c^4
+(2*a*b)^2   => 2^2*a^2*b^2
+(a^2*b)^3   => a^6*b^3
+(a^{1/2})^2 => a^1 => a
+(log(a))^2  => no-op
+(exp(a))^2  => exp(2*a)
+
+The top one is the hardest. It's pretty straight forward so here's how to do it,
+K_{1,1,1,1}*a*a*a*a + a*a*a*b + ... + K_{3,3,3,3}*c*c*c*c
+Recall the combinatorial problem of # ways to arrange (a,b) and (a,a,b), etc.
+In the case of (a,b) it's 2! ways to arrange, in the case of (a,a,b) it's 3!/2!
+As I recall Pascals triangle is a ways to systematically create the coefficients in the 2D case.
+What do we do on the nD case?
+We need two algorithms 1) create the products, 2) create the coefficients
+The product algorithm is given a unique list of n variables.
+A wrinkle is that we may want to systematically split off the coefficients and multiply them separately? No, we can do that later, just keep it in mind for now. It's nothing.
+Example:  (a+b+c)^4  	      	    = (a+b+c)*(a+b+c)*(a+b+c)*(a+b+c)
+  products code reverse K
+  aaaa     400  004 1   4!/(0!*4!*0!) = 1     aaaa
+  aaab     310  013 2	4!/(3!*1!*0!) = 4     aaab + aaba + abaa + baaa
+  aaac	   301  103 2	4!/(3!*0!*1!) = 4     aaac + aaca + acaa + caaa
+  aabb     220  022 3	4!/(2!*2!*0!) = 6     aabb + abab + abba + baab + baba + bbaa
+  aabc 	   211	112 3	4!/(2!*1!*1!) = 12    aabc + aacb + abac + acab + abca + acba + ...
+  aacc	   202	202 3	4!/(2!*0!*2!) = 6
+  abbb	   130  031 4	4!/(1!*3!*0!) = 4     abbb + babb + bbab + bbba
+  abbc	   121  121 4	4!/(1!*2!*1!) = 12    abbc + abcb + acbb + ...
+  abcc	   112	211 4	4!/(1!*1!*2!) = 12
+  accc	   103	301 4	4!/(1!*0!*3!) = 4
+  bbbb     040  040 5	4!/(0!*4!*0!) = 1     bbbb
+  bbbc	   031	130 5	4!/(0!*3!*1!) = 4 
+  bbcc	   022	220 5	4!/(0!*2!*2!) = 6
+  bccc	   013	310 5	4!/(0!*1!*3!) = 4
+  cccc	   004	400 5	4!/(0!*0!*4!) = 1
+  	   	                TOTAL = 81 = 3*3*3*3
+What we're doing is counting up to various limits. The total number variables is 4.
+It would be nice to respect lexigraphic order. The counting algorithm is then,
+1) The outer loop dictates the num. of a's in the expression i = (n,     n    -1,...,1,0), N=n-i
+2) The next  loop dictates the num. of b's in the expression j = (n-i,   n-i  -1,...,1,0), N=N-j
+3) The next  loop dictates the num. of c's in the expression k = (n-i-j, n-i-j-1,...,1,0), N=N-k
+The true outer "loop" is really just "n". This how much is being allocated to the next loop.
+The a-loop knows the given N = n and the current "i" and can pass down N = n-i to the b-loop.
+The b-loop knows the given N and passes the limit of N-j to the next-most loop (c-loop).
+Each loop will be passed the list of basic expressions (a->b->c) and the current iterator.
+The processes of pass-along ends when the iterator hist the end of the (abc) expression list.
+I think for now, I won't worry about the combinatorial explostion that might occur of n > 100.
+OK, maybe just a quick peek. Does the basic library have something for this? A multi-choose?
+The simplest thing to do is use long internally and be done with it until we have do.
+Each loop returns the factorial of it's local index (i,j or k) and multiplies this with the result from the next-most inner algorithm and returns the product to the calling loop. The outer result divides this into n! to form the term coefficient.
+Do we use SimplePower and SimpleMultiply at each stage to ensure we're capturing the 1,0 cases?
+
+Notice we have a related problem for SimpleMultiply,
+       (a + b + c)*(a + b + d) = aa  +  ab + ad + ba + bb  + bd + ca + cb + cd
+       	      	      	       = a^2 + 2ab + ad      + b^2 + bd + ca + cb + cd
+This algorithm is a generalization of the (a+b+...+z)^n algorithm above. The issue is one of gathering common elements without doing a hideous number of compares.  
+
+### 12/3/2012 ###
+
+Here's how to deal with the product of sums problem above,
+
+       (a + b + c) * (a + b + d) = ((a+b) + c) * ((a+b) + d)
+       	      	     	      	 = (a+b)^2 + (a+b)*d + c*(a+b) + c*d
+
+Now let's get the (a+..+z)^n algorithm in place.
+This is a painful algorithm to get right. I need to think about it differently.
+It's two dimensions: M,N. How many states? We need to write out one m-tuple code for each state.
+4 0 0   aaaa 0000 We start with all the beans in the left bin
+3 1 0   aaab 0001 We move one bean one bean to the left
+3 0 1   aaac 0002 Starting from the right, grab a bean and move it one step to the right.
+2 2 0   aabb 0011 That was the 1-bean game. Now we reset and play the 2-bean game
+2 1 1   aabc 0012 Start from right and move one bean to the right one step
+2 0 2   aacc 0022 And again
+1 3 0   abbb 0111 The 3-bean game now begins.
+1 2 1   abbc 0112 Grab a bean one space
+1 1 2   aacc 0122 grab another
+1 0 3	accc 0222 really
+0 4 0	bbbb 1111 really
+0 3 1	bbbc 1112 boring, but now we're done.
+0 2 2   bbcc 1122 
+0 1 3	bccc 1222
+0 0 4  	cccc 2222
+
+Let's try a bigger case,  a=0, b=1, c=2, d=3, e=4
+5 0 0 0 0 aaaaa 00000 Start at ground state
+4 1 0 0 0 aaaab 00001 increment right-most "digit"
+4 0 1 0 0 aaaac 00002
+4 0 0 1 0 aaaad 00003
+4 0 0 0 1 aaaae 00005
+3 2 0 0 0 aaabb 00011 When we roll-over we don't start at 'a', but 'b'
+3 1 1 0 0 aaabc 00012
+3 1 0 1 0 aaabd 00013
+3 1 0 0 1 aaabe 00014
+3 0 2 0 0 aaacc 00022 Roll-over to 'c' -> right-most is 'c'
+3 0 1 1 0 aaacd 00023
+3 0 1 0 1 aaace 00024
+3 0 0 2 0 aaadd 00033
+3 0 0 1 1 aaade 00034
+3 0 0 0 2 aaaee 00044 about to roll-over the third digit
+2 3 0 0 0 aabbb 00111 the "ground state" is never lower than the left-neighbor digit.
+2 2 1 0 0 aabbc 00112
+2 2 0 1 0 aabbd 00113
+2 2 0 0 1 aabbe 00114
+2 1 2 0 0 aabcc 00122 Notice again, rollover to ground-state is lever decreasing.
+2 1 1 1 0 aabcd 00123
+2 1 1 0 1 aabce 00124
+2 1 0 2 0 aabdd 00133
+	  aabde 00134
+	  aabee 00144
+	  aaccc 00222
+	  aaccd 00223
+	  aacce 00224
+	  aacdd 00233
+	  aadde 00234
+	  aadee 00244
+	  aaddd 00333
+	  aadde 00334
+	  aadee 00344
+	  aaeee	00444
+	  abbbb	01111
+	  abbbc	01112
+	  
+Now we have our codes, we need out products.
+
+### 12/4/2012 ###
+
+Let's do the multiply. Then we can return to the PowerOfSums to simplify the multiply.
+The PowerOfSums::getTerm() function should be simpler. We do a cumulative multiply.
+This will have the downside of O(n^2/2) unless we simply pre-multiply the coefficient with a straight multiply of the other multiplicands. So let's explicitly test,
+d1*(d2AB) => d12AB
+1*(d2AB)  => d2AB
+d1*(1AB)  => d1AB
+d1*(AB)   => d1AB
+This is part of a bigger case,
+
+  (c1A1^n1 + c2A2^n2 + ...) * (d1B1*m1 + d2B2^m2 + ...)
+
+To handle the general case we need to format each expression as, 
+
+  c1A1^n1 -> (c1, (A1,n1))   ~ pair<coeff, pair<base, exponent>>,
+
+Wait!!! We can look into the base as well,
+
+  A => (c1(A11^e11 * A12^e12 * ...) + c2(A21^e21 * A22^e22 * ...) + ...)
+
+we can peel this off into,
+
+       (c1,                    c2, ...,                    cn                 )
+       (A11, A12, ..., A1m1), (A21, A22, ..., A2m2), ..., (An1, An2, ..., Anmn)
+       (e11, e12, ..., e1m1), (e21, e22, ..., e2m2), ..., (en1, en2, ..., enmn)
+
+I see a set of classes to handle this with their own operations. For example we can represent each multiplicand with a class M so that 
+
+      A  -> (c1A1 + c2A2 + ... + cnAn)                          // sum of coef*products
+      Ai -> Mi = (ci, (Ai1, Ai2,..., Aimi), (ei1, ..., eimi))   // coef * product of powered bases
+
+Ex: Let A = 3*a^2*b + 5*a^3*c
+    Let B = 7*a*b^{-1} + 11*a^3*c
+    Then A*B = (3*a^2*b + 5*a^3*c) * (7*a*b^{-1} + 11*a^3*c)
+    	     = 21*a^3 + 33a^5*b*c + 35*a^4*b^{-1}*c + 55a^6*c^2
+
+    This example doesn't exhibit the problem, but it looms; what if terms coincide?
+    The answer is that we need to perform a cumulative SimpleAdd to capture this possibility.
+
+Let's do a couple more examples to make the point (will inform test cases)
+
+Ex: Let A = (a + b + c)
+    Let B = (a + b + d)
+    Then A*B = ((a+b) + c) * ((a+b) + d)
+    	     = (a+b)^2 + (a+b)*d + c*(a+b) + c*d
+
+    The point here is that we need to capture common expressions (true?).
+    What if we did not? What if we chose not to recognize this case and instead
+    rely on cumilative SimpleAdd
+
+    Then A*B = a^2 + ab + ad + ba + b^2 + bd + ca + cb + cd
+    	     = a^2 + 2ab + b^2 + ad + ca + cb + cd
+
+    This means that terms are observed and summed. It's more time consuming O(n^2), 
+    but we have to do it anyway for the reason as suggested by the previous example.
+
+Ex: Let A = (ab + a^{-1})
+    Let B = (ab + a^{-1})
+    Then A * B = (ab + a^{-1}) * (ab + a^{-1})
+    	       = a^2b^2 + b + b + a^{-2}
+    	       = a^2b^2 + 2b    + a^{-2}
+
+Let's take a previous example and break it down. We have the distributive law at play because we have at least one sum term. What if we don't have that case?
+
+Ex: Let A = 3*a^2*b*c
+    Let B = 7*a*b^{-1}
+    Then A*B = 21*a^3*c
+
+    When we don't have any sums, we can suppose we have a product of products.
+    Then we have the coefficients and the base^exponent terms.
+    We peel off the coefficient terms and then form list of pairs so that,
+
+      a^2*b*c  -> ((a,2), (b, 1), (c,1))
+      a*b^{-1} -> ((a,1), (b,-1), (c,0))
+
+    Note: exponents need not be numeric.
+
+    A better way to handle this is with a header, sparse system. That sounds familiar!
+
+      	     	  a  b c                                  3 a  b c 7
+      a^2*b*c  -> 2  1 1      with coef:    3*a^2*b*c  -> 1 2  1 1 o
+      a*b^{-1} -> 1 -1 o                    7*a*b^{-1} -> o 1 -1 o 1
+      
+    We need to have the concept that each row represents a different product and 
+    that we multiply rows, not add them. The coefficients are a problem. We are
+    thinking to peel them off, but that's an extra step.
+
+    We could peel this expression this way, (NO)
+
+      (3*A) * (7*B) => (3*7) * (A*B)
+
+    Then we can have a utility that turns A -> 1*A and 3*A -> 3*a, ie; coefficient normalized.
+    And make sure we handle all the numeric cases (1's and 0's). OK.
+
+    We'll need to capture the coefficient cases.
+
+The ProductProductMatrix is successful and will provide all the services of SimpleMultiply except the product of sums. The is the one feature we must add ourselves. 
+Q) What about 3*(X + Y) x B ? 
+A) I think 3*(X + Y) cannot happen, it will be 3X+3Y. Is this true? 
+   Of course, that's the whole point of the distributive law.
+
+### 12/5/2012 ###
+
+Let's trim the SimpleMultiply to rest on top of ProductProductMatrix.
+Need to revisit SimpleAdd. Need not to assume the first value contains the one coefficient.
+Failed case X*Y + X*1, should be X*Y + X, but is just X. Oops.
+
+Now let's go back to SimpleAdd and make it rest on a SumProductMatrix and make it accept more than two terms, a list of terms. This way the SimpleMultiply can pass in a list and not have to do the cumulative add thing.
+
+Actually, let's goose up the ProductProductMatrix to allow a list of rows.
+Wait, in order to upgrade the ProductProductMatrix we need to allow SimpleSum(<list>).
+
+OK, a new tact. We can build a list of coefficients as they are encountered we either add a new entry in the header vector and a new list (vRicoPtr) in the exponent vector. Then we only have to walk the header for bases and vector sum the exponents. The SimpleSum will need to be upgraded to handle many summands. That can be accomplished with a cumulative sum for the time being.
+
+Ran into a code dump and turned off all the testing until fixed. Done. 
+ProductProductMatrix is now misnamed. We can move on and create the equivalent in CoefficientSum.
+
+3A + B + 5A    => 8A + B
+3A + {-3}A + B => B
+3A + {-3}A     => 0
+5  + A         => 5 + A
+
+A*5 not allowed.
+5A == 5*A
+A  == 1*A
+5  == 5*1
+
+The upshot is that we consume sums and when we hit a product, we try to split off the coefficient.
+If we hit a number it's the coefficient of One. If we hit anything else it's coefficient is One.
+
+ProductProductMatrix is ProductDigester
+Updated Rico::Multiply to handle singleton cases.
+
+### 12/6/12 ### Cima's Birthday !!!
+
+Need to update testing in SumProductMatrix to not rely on specific return string.
+Then we update the expression output to NOT strip parentheses. It's making life difficult now.
+Then we can diagnose what's wrong with our final product test.
+
+We can upgrade the Rico::Add(A,B[,C]) and Rico::Multiply(A,B[,C]) to allow list composition.
+And both pass through Rico::Add(<list>), Rico::Multiply(<list>) respectively to allow for zero length and singleton lists.
+
+Need to remove the DEPRECATED functions of RicoSimplify. DONE.
+Need to updated TEST's to NOT rely on string expression results, but parse trees instead. DONE.
+Let's removed some paren suppression and see ... DONE.
+
+Want: (5 *  X29 * (1 + (5 *  X30 * (1 + (5 * X31)))))
+Got:  (5 * (X29 * (    (5 * (X30 * (1 + (5 * X31)))) + 1)))
+
+For some reason, not auto-flattening. DONE.
+
+### 12/7/12 ###
+
+Consider this sparse array representing: 5 + 2x + xy + y^2 + 3x^2y^2
+
+      1  x  x^2 x^3 x^4 ...
+    |----------------------
+1   | 5  2
+y   |    1
+y^2 | 1     3
+y^3 |
+y^4 |
+... |
+
+Back to the work at hand. Here's what we have for addition and multiplication,
+Suppose we wanted (A+(B+(C+D))) => (A+B+C+D). We would need to recursively unpack the binary expressions then pass the result a a flattened array for rudimentary filtering and final parse tree construction. We do: void AddAccumulate(vRicoPtr& V, RicoPtr A) that calls recursively to unravel the list. It can do filtration as it goes. Let's see what it looks like.
+
+OK, we're passing all our tests. I still need to flesh out RicoPower. Factoring is a separate issue and before I try the depth-first simplifier I need to look into symbolic division and also write up the basic material on simplificiation.
+
+Consider the expression:      A =   ((x+3)^2 + 5)       = x^2 + 6x + 14
+Then we can do                B =   ((x+3)^2 + 5)*(x-1) = x^3 + 6x^2 + 14x - x^2 - 6x - 14
+     	    			  	   	    	= x^3 + 5x^2 + 8x - 14
+
+Suppose we then have:         C = B / A = x-1
+	   		      	= (x^3 + 5x^2 + 8x - 14) / (x^2 + 6x + 14)
+
+We need to ask: what if we make sure there are no integer powers save 1 and -1?
+Then we are in the business of sybolic division. So far we're looking at the 1D case. Let's review,
+
+                               x -  1
+              -----------------------
+x^2 + 6x + 14 | x^3 + 5x^2 +  8x - 14
+                x^3 + 6x^2 + 14x
+                ----------------------
+                    -  x^2 - 6x  - 14
+                    -  x^2 - 6x  - 14
+		    -----------------
+		                    0
+
+We got lucky this time, but have made the point, that in the 1D case at least, we need this extra step since factoring will not help. 
+Q) Should be symbolically divide before or after factoring? It seems *before*, but this is after we have removed all exponents on sums
+
+Consider:                (x+1)/(x-1)*(x+5)
+		       = (x^2 + 6x + 5) / (x - 1)
+
+               x + 5
+      --------------- = x + 5 + 10/(x-1)
+x - 1 | x^2 + 6x + 5
+        x^2 -  x
+	------------
+	      5x + 5
+	      5x - 5
+	      ------
+	          10
+
+The point is that we need to boil the given expression down to a single rational expression without powers of sums. If there is a denominator, then we need to symbolically divide.
+
+What happens in 2D?     (x+y)/(x-y)*(x+5)
+     	     	      = (x^2 + 5x + xy + 5y) / (x - y)
+
+                    x - 2y + 5
+      ------------------------     = x - 2y + 5 + y(10 + 4y) / (x - y)
+x - y | x^2 + xy + 5x + 5y
+        x^2 - xy
+	------------------
+	    -2xy + 5x + 5y
+	    -2xy           + 4y^2  <-- right here we have an issue. 
+            ---------------------      I think we need to prioritize the removal of
+	           5x + 5y + 4y^2      higher power expressions. See next incantation
+		   5x - 5y
+		   --------------
+		       10y + 4y^2
+
+                           x - 2y 
+      ------------------------------- = x - 2y + (-2xy + 5x + 5y) / (x - y)
+x - y | x^2 + xy + 0y^2 + 5x + 5y + 0
+        x^2 - xy
+	-----------------------------
+	    -2xy        + 5x + 5y
+	    -2xy + 4y^2                <-- attempting to remove the xy term introduces the y^2 term
+            ---------------------          These are at the same power level (2), but are not
+	    				   necessarily peers. If they are peers then we just
+					   removed 2 of the xy and introduced 4 of the y^2
+					   that seems like going backwards to me.
+
+I can't tell the difference in merit between
+
+                       x - 2y + 5 + y(10 + 4y) / (x - y)
+
+and 
+
+		       x - 2y + (-2xy + 5x + 5y) / (x - y)
+
+Need to test Rico::Power. Done.
+Updated SumDigester and ProductDigester to rely on new Rico::Add and Rico::Multiply features.
+
+### 12/10/2012 ###
+
+Time to pause and write up the simplifier code. Here's the first question to pop out.
+Q) Why do we have a numberical trigger for Rico::Power where we immediately evaluate any pairs of number, but do not do the same for addition or multiplication. Could this serve some useful purpose?
+A) A reason for the difference is that addition and multiplication are muti-operands ops while Power is strictly binary. It takes so little extra effort to test for and handle the power case. By why do it? Either do it for all or none or explain. I think part of the reason is that while handling the factoring case the 5^2 and 5^3 terms showed up as power elements, not numbers. Well, which is it? What about 2*5?
+
+************************************************************************************
+A) We DO NOT DO math at the Rico level. That is entirely a province of RicoSimplify.
+************************************************************************************
+
+Q) Why doesn't Power provide any flattening feature? 
+A) It takes more care.
+
+I think exp and log need to "do the math", if possible.
+
+### 12/11/2012 ###
+
+It's 2:30pm and after applying for jobs I'm finally ready to get some tiny amount of work done.
+
+The Stage One Simplify must "do the math". Here's who needs to do the math,
+SumDigester::Digest(A,B)
+ProductDigester::Digest(A, B)
+RicoNumber::Power(A,B)
+
+use <cmath> instead of <math.h>. The former is more likely C++ friendly (depending on compiler).
+
+Need to test the math of Integer, Fraction and Double.
+
+### 12/12/2012 ###
+
+Working on NaN, +Infty, -Infty for double. Done.
+
+### 12/13/2012 ###
+
+Need to work on RicoNumber::Power. The integer and fractions need some care. 2^3 = 8 is all integer, but 2^100 is not going to fit in integer and will need a double. Done.
+
+Need to do int^int, frac^int, int^frac, frac^frac cases. Done.
+
+Return to write-up.
+
+Notice that XY+XZ =factor> X(Y+Z) turns expression into sequence of independent products.
+       	    (XY)^Z => X^Z * Y^Z is the standard simplification. 
+	    I suppose that factoring of non-numeric exponents is in order.
+
+The goal now is to create a Simplify function that will apply Stage One simplification to a given expression. 
+
+Oh, bugger! I forgot that the expressions I'm trying to simplify may have an arbitrary number of terms in the case of addition and multiplication! The Sum- and Product-Digester needs to be upgraded! Sheesh. Not quite there, but then there was that problem of not handling lists before, wasn't there. Indeed. Not too bad. We may have it done now. Just need to build some simple tests then the interface.
+
+Well, we've got Simplify(<rico>) running. And here's our first bug (core dump). Fixed.
+%> r
+X = rico.norm()
+Simplify((X+1)^2/(X+1))
+
+TODO: Need to finish RicoSimplify::Multiply(const vRicoPtr& P)
+
+How do we do the following?
+(A1+A2)*(B1+B2)*(C1+C2)
+We can process the first sum we encounter to the sum
+A1BC + A2BC
+Now we recurse into each summand (product)
+We have the same algorithm in the product rule for differentiation.
+If the first sum term we encounter has n operands then we form n products to be summed.
+
+TODO: Need to test RicoSimplify::Multiply(const vRicoPtr& P) DONE.
+
+### 12/16/2012 ###
+
+Need to revisit each Stage One transformation to make sure it's recursive. We no longer assume that operands are in simplest form. We now simplify from the top down, then bottom up. Is this sensible? The proof is in the pudding, but what pudding indeed. Is there some better material on how to code up algebraic simplification I'm missing?
+
+### 12/18/2012 ###
+
+We're taking the position that if we make a simplification that affects the operands we'll go as deep as is necessary assuming that the operands are already in simplest form. There may be a simpler form after the current transform. We'll make shallow investigations. That's new. 
+This explains why Neg will check if it's operand is already a Neg even though this violates the assumption of "simplest form". It's a harmless violation.
+
+There's an apparent inconsistency between Negate and Reciprocal. One is a first-class function and the other is a macro. Should we take the time to force consistency? Not sure. It's too small.
+
+Now we check the SumDigester (DONE), ProductDigester and Power.
+Removed the assumption in SumDigester that numbers in a productand list are singleton in first position only.
+ProductDigester was already written robustly (no funky assumptions). Very small and clean now.
+Note that exponents need not be numeric so we call SumDigester to perform exponent sum.
+
+Here's the question about RicoSimplify::Power. In the case of (AB)^C => A^C * B^C, do we perform a simplify multiply or a rico multiply? There seems no simplify opportunity. Is that a reason to not call the simplify version? Wait
+
+((A+B)*C)^3 => (A+B)^3 * C^3 is simplifiable.
+
+### 12/19/2012 ###
+
+Now we face the big structure.
+
+Ex1: (x+1)^2 / (x+1) => (x+1)
+
+In this example we want to make sure not to expand (x+1)^2 else we miss the divide. On the other hand if we had expanded we would have,
+
+Ex2: (x^2+2x+1)/(x+1) => ???
+
+This synthetic division opportunity would yield the correct result,
+
+                x + 1
+       ______________
+   x+1 | x^2 + 2x + 1
+         x^2 +  x
+	 ________
+                x + 1
+                x + 1
+                _____
+                    0
+
+I don't have that concept yet. I'm not sure I need it, except to remove non-intrinsic poles.
+I'm letting Ex1 drive the whole approach. Suppose we do that anyway. The top level Simplify chooses the entry point and away we go. We would hit the division of Ex1, convert it to,
+
+    (x+1)^2 / (x+1) => (x+1)^2 * (x+1)^{-1}
+
+We would try to simplify the power (and fail) then multiply would try to collapse the powers
+
+    A^2 * A^{-1} => A 
+
+and that's it. We hit (x+1), try to simplify the sum, give up and return.
+
+So what happens to this example,
+
+Ex3: 0 + ((x+1)^2 / (x+1))
+
+We start with addition. The two terms 0 and (...) is added to the structure. The 0 summand and 1 coefficient would be stripped and the (...) is returned unsimplified. We assumed depth-first when we build these things. We can't turn around and ask the SumDigester to simplify base elements because that could reveal non-basal elements, what if a base element turns out to be zero?
+
+Another argument for not simplifying from the top-down is that we get into trouble when we necessarily simplify from bottom-up. Each stage becomes a top-down, revisiting previously simplified elements. I think I need to build bottom up even though it destroys Ex1. We recover Ex1 by synthetic division (in 1D) and other polynomial simplification techniques we are currently exploring.
+
+Now, how to construct depth-first simplify? We are presented a leaf or non-leaf. If leaf we simply return. If non-leaf (function) we must ensure each operand in simplest so we replace operands with simplified versions.
+
+Ex4: ((X+Y)Z)^2   => X^2Z^2 +2XYZ^2 + Y^2Z^2
+
+     ((X+Y)Z)^2 =Multiply> (XZ + YZ)^2 =IntPower> (XZ)^2 + 2XYZ^2 + (YZ)^2
+
+Notice that when we multiply two non-numeric objects we need to simplify.
+
+I think we've called the simplify version of add/multiply/etc everywhere we can anytime we actually try to create a new add/multiply/etc. We work bottom-up. Now we need to simplify rational polynomials. How do we do that? In the 1D case it's synthetic division. We can at least put that in, but first we need to detect this case. We do this when we hit division? No, when we multiply and the result of power collapsing is a mix of pos and neg powers. We segregate the pos and neg powers and try to divide. Notice we cannot have the case ((X+1)(X+3)) / ((X-2)(X+5)) since the multiply would have cured this. In the 1D case we really shouldn't expect  X to appear with different powers in a product. That's cured. The question is: do we want the dust to settle? No, because we will create a sum of products and the summands will meet appropriately. This is definitely within the class of simplify ops we want for multiplication, post power aggregation.
+
+TODO: check the multiply better. (X+2) / (X+3) => ??? It messes up. We need to match power!!!
+
+TODO: allow for expression capture (thought that was done). Done.
+
+How about this case (X+1)*(X+2), it's pretty simple, right? What about (X+2)^{-2}. Again, no problem. Now, how about,
+
+    (X+1)/(X+2) => 1/(2 + X) + X/(2 + X)
+
+We'll, that's correct. I think some factoring is in order. Can we toss that in? Not yet. First of all Factor hasn't been fully tested. Second it's only designed to operate on sums which means it doesn't delve depth-first. Third I haven't thought through the issues of what happens if we do a depth-first factoring.
+
+Let's return to the rational polynomial case,
+
+X = rico.norm()
+Simplify((X+1)/((X+2)*(X+3)))
+# (6 + 5X + X ^ 2)^{-1} + X * (6 + 5X + X ^ 2)^{-1}
+Simplify((X+1)/(X+2)/(X+3))
+# (2 + X)^{-1} * (3 + X)^{-1} + X * (2 + X)^{-1} * (3 + X)^{-1}
+
+Notice the result is not the same. It appears to be not fully simplified. 
+It's the {-1} power community that's being unserved. We expand integer powers well enough, but are not recognizing as sums those terms wrapped in a ^{-1} jacket.
+
+I want,
+	 (X+1)^(-1)*X*(X+2)^(-1)   =>   X * (2 + 3X + X^2)^(-1)
+
+The (X+1)^(-2) is dealt with effectively, but results in (...)^(-1) and doesn't interact further.
+Can we take an expression that has more than one negative power, flip the signs of all powers, process the result "normally" and reflip? Aren't we just mishandling powers? Um...
+
+Perhaps our little recursive trick needs revisiting. 
+
+	(X+1) * Y * (X+2) * (X-1)^(-1) * (X-2)^(-1)
+
+We need to process sums with positive powers just as we do with negative powers, but more to the point we need to not knee jerk create sums of products. Our focus must shift to rational sums of products. Looking slightly ahead suppose we have continued fractions,
+
+   1 + 2/(X+3/(X+4/(X+5/(X+6))))
+
+Well...that's just too bad for now. I think the rational polynomial thing is a good wrap-up point. We're allowing non-numeric powers and the {log,exp} pair. We could move up to {sin,cos,sinh,tanh} etc, if we expand into the complex space.
+
+What do we do if we detect a negative numeric exponent? I think we need to create a structure called a general fraction where we have the quotient of two Rico object (pointers). Then we can build the more general concept of gcd. 
+
+How would this work? If Fraction is hit, we need to split out our simplify transform. If you multiply a neg-exponent with a Fraction we flip and do the multiply with the denominator. aren't we just talking about divide? Let's not get rid of it so soon. We need divide.
+
+Let's revisit SimplifyDivide. It's embryonic form is ready.
+
+### 12/20/2012 ###
+
+Now we can introduce some new multiplication rules,
+// __Product of Fractions____
+// (A/B) * C     => (A*C) / B
+// A * (B/C)     => (A*B) / C
+// (A/B) * (C/D) => (A*C) / (B*D)
+
+Notice we need to write the rule for more than a pair, that is, if any fraction present we need to form a fraction.
+
+How do we handle this case? I thought I already wrote this one? I did! Then I erased it.
+(a+b)(c+d)e(f+g+h)
+
+Let's rebuild the damn thing. We capture a list of products that is a list of sums.
+    acef
+    bd g => acef * aceg * ... * bdeh
+       h
+
+As I recall, the way this worked was to put each list of sums on a loop and count them off. If we looped them we would tell the Next one to advance. The 'e' would always tell the Next to advance and eventually we hit the last end and receive a "false" so we can't keep going. We write the current expression and then (do {append summand product} while(advance()). ProductOfSumsDigester.
+
+Nope. We don't need to resurrect that old code since the recursion algorithm handles things just fine, I think.
+
+The thing we really need to do now is process negative exponents into division.
+
+X = rico.norm()
+Simplify(((X+1)*(X+2))/(X+1))
+Simplify(((X+1)/(X+1))*(X+2))
+
+We could notice the following when we divide. Is this not part of the digester?
+X = rico.norm()
+Y = rico.cauchy()
+Simplify((X*Y)/Y)  # => X
+
+Need a DivideDigester. Really it's the same as the product digester, but with negated exponents. In fact the product digester needs to be upgraded to handle division elements? No they don't play that way. Division is a top-level concept.
+
+How is Negate handled? Rico is automatically simplifying it. What's the deal? This got some work.
+
+Crap. The ProductDigester needs work. test (X/Y) * (Z/F) => (XZ) / (FY) fails. Fixed.
+
+### 12/21/12 ### Doomsday ###
+
+We're ready for polynomial reduction, I think. I need to write up the new division material. I think everything is working. The basic concept to keep in mind is,
+
+x/y * z/w             => xz / yw    // Want division to be outermost
+1 + x/(1 + y/(1 + z)) => no-op      // but, want to preserve continued fractions
+
+### 1/10/2013 ###
+
+Damn, two weeks break and I forget everything. This sucks. As I recall I need to finish off the simplifier and write it up. I think the write up should be next since it will help me recover my position.
+
+OK, before that, let's review the code a bit. The top level is a depth-first self-call simplifier.
+It only operates on functions since these are the only objects with operands. Numbers and RV's are leaf nodes.
+
+I notice that some of the simplifications call simplify functions. If we believe we've done depth-first then isn't this unneccesary? Oh boy. what's the deal here?
+
+That write-up isn't going to be simple. Sometimes the particular simplification is warrented because an expression hasn't had the opportunity to be simplified within a new context.
+
+### 1/16/2013 ###
+
+The notation I need is for NaN, Number and NonNumber; phi, nu, rho
+
+### 2/14/2013 ###
+
+Looking for some way to move forward nicely. I need to finish off the simplifier somehow and then start writing up the design of the 1D displayer. The simplifier has taken an inordinate amount of time. Alos, what about 2D? I don't have the luxury of having a ready-made partition. What can I do? If I have a 1D result (Z) and some partition, then in the 2D (X,Y)-space there are level curves. What is the best way to describe these? What is a decent way to describe these? In 1D it's easy, they are a collection of disjoint intervals that are disjoint from every other partition interval of Z.
