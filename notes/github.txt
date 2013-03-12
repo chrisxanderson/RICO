@@ -1,0 +1,64 @@
+### 3/11/2013 ###
+
+git config --global user.name "Tom Fielden"
+git config --global user.email "tom@tomfielden.com"
+git config --global alias.co checkout
+git config --global core.editor emacs
+git config --global color.ui auto
+git config --global core.excludesfile ~/.gitignore
+git config --global merge.tool vimdiff
+
+## In the new projects directory type:
+git init
+
+## To check the git settings
+git config --list
+
+## edit <project>/.gitignore adding, or put in ~/.gitignore
+# Ignore other unneeded files.
+doc/
+*.swp
+*~
+.project
+.DS_Store
+
+## To add the files in the current directory/subdirs to git repo stage them with,
+git add .
+
+## Then commit them with a comment,
+git commit -m "Initial commit"
+
+## Set up a github account (already done last year) http://github.com
+u: tomfielden
+p: 42
+
+## Can view the repo at
+https://github.com/tomfielden/RICO.git
+
+## the SSH line is:
+git@github.com:tomfielden/RICO.git
+
+## Need to establish RSA...#################################################
+git@github.com:tomfielden/ruby-rails-learning.git
+cd ~/.ssh
+rm id_rsa*
+ssh-keygen -t rsa -C "tom@tomfielden.com"
+## The tide also rises ##
+ssh-add ~/.ssh/id_rsa
+# will copy the contents of the publickey to clipboard
+sudo apt-get install xclip
+xclip -sel clip < ~/.ssh/id_rsa.pub
+# Goto Account Settings at github
+# Click "SSH Keys" in left sidebar
+# Click Add Key and past into key field.
+# test
+ssh -T git@github.com
+##########################################################################
+
+## Now we can push our first project to the repo,
+git remote add origin git@github.com:tomfielden/RICO.git
+git push -u origin master
+
+### The way to manage day-to-day changes is (the -a is similar to `git add .` but not exact)
+git commit -am "TRF: some clever comment"
+git push
