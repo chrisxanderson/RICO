@@ -55,8 +55,13 @@ xclip -sel clip < ~/.ssh/id_rsa.pub
 ssh -T git@github.com
 ##########################################################################
 
-## Now we can push our first project to the repo,
+## Now we tell which repo to use and can push our first project to the repo,
+## Assume the repo is non-empty.
 git remote add origin git@github.com:tomfielden/RICO.git
+git pull -u origin master
+git add .
+git commit -m "There was stull already in the remote repo"
+## Now we're ready,
 git push -u origin master
 
 ### The way to manage day-to-day changes is (the -a is similar to `git add .` but not exact)
