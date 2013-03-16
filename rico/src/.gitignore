@@ -1,0 +1,24 @@
+# C/C++ .gitignore #
+##################
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+
+# Compiled Dynamic libraries
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# Compiled Static libraries
+*.lib
+*.lai
+*.la
+*.a
+
+# Executables
+*.exe
+*.out
+*.app
