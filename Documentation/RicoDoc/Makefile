@@ -17,6 +17,7 @@ all: $(TARGET)
 
 $(TARGET) : $(PROJECT).dvi
 	$(DVIPDF) $(PROJECT).dvi
+	@mv $(TARGET) ..
 
 $(PROJECT).dvi : $(PROJECT).bbl $(DEPS)
 	$(LATEX) $(PROJECT)
