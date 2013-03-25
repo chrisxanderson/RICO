@@ -6,6 +6,9 @@ There are two main parts to this project.
 
 ## To create the rico module ##
 Remain in this top-level directory execute (%> is a shell prompt)
+
+NOTE: Edit the Makefile so that LIB points to a local directory of R modules
+
 %> make
 
 This will create a file called "rico_0.1.tar.gz" (module the version number). Create a
