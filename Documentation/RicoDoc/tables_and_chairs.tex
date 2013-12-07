@@ -28,11 +28,11 @@ P_c = \frac{24*45}{D_c + 2D_d}
 
 where $D_c$ is the demand for chairs alone and again $D_d$ is the demand for dinette sets. The sale of one dinette set implies the sale of two chairs. The actual functions are immaterial and have been contrived so that the results of this version of the tables and chairs example are comparable to previous versions. 
 
-We recognize that $P_t$ and $P_c$ are correlated, but do not need to materialize their joint probability distribution in order to compute revenue results.
+Recognize that $P_t$ and $P_c$ are correlated, but do not need to materialize their joint probability distribution in order to compute revenue results.
 
 The example is data-intensive and prototype software is used to produce numerical results. Rather than presenting the prototype, written in Python using the Numpy library, the data structures and sequence of operations will be described.
 
-Let our input random variables be,
+Let the input random variables be,
 
 \begin{align*}
 Dt &= \{DXt, DPt\}\\
@@ -51,15 +51,15 @@ DXd &= (DXd_1, \dots, DXd_{Nd})\\
 DPd &= (DPd_1, \dots, DPd_{Nd})
 \end{align*}
 
-assuming that $DPt_{Nt} = DPc_{Nc} = DPd_{Nd} = 0$ as usual for our numeric random variables since probability values are between partition values. We have $Nt$, $Nc$ and $Nd$ as the number of partition endpoints for each input random variable; tables, chairs and dinette sets respectively.
+assuming that $DPt_{Nt} = DPc_{Nc} = DPd_{Nd} = 0$ as usual for the numeric random variables since probability values are between partition values. Then $Nt$, $Nc$ and $Nd$ as the number of partition endpoints for each input random variable; tables, chairs and dinette sets respectively.
 
-We form the demand joint probability distribution $DP$ for the input random variables by Cartesian product,
+Form the demand joint probability distribution $DP$ for the input random variables by Cartesian product,
 
 \begin{align*}
 DP &= DPt \times DPc \times DPd
 \end{align*}
 
-We separately form parallel 3D arrays for each input demand,
+Separately form parallel 3D arrays for each input demand,
 
 \begin{align*}
 DT &= DXt \times ones(Nc) \times ones(Nd)\\
@@ -83,7 +83,7 @@ Throughout this example presentation 2D diagrams will tend to be preferred to re
   \label{fig:tcd_rectangle}
 \end{figure}
 
-In an abuse of notation, when no confusion arises, $t$, $c$ and $d$ are used as both identifiers and indices. We then have the indices for tables, chairs and dinette set random variables,
+In an abuse of notation, when no confusion arises, $t$, $c$ and $d$ are used as both identifiers and indices. The indices for tables, chairs and dinette set random variables are,
 
 \begin{align*}
 t &= 1 \dots Nt\\
@@ -93,7 +93,7 @@ d &= 1 \dots Nd
 
 A specific point will be referred to within the demand joint probability array as $DP_{t,c,d}$ or simply $DP_{tcd}$ where the commas are dropped for clarity. The shaded rectangle in figure \ref{fig:tcd_rectangle} is then the demand-space rectangular block of uniform probability distribution with value $DP_{tcd}$.
 
-The four 3D arrays $DT$, $DC$, $DD$ and $DP$ are all parallel. We will now create other arrays parallel to these. The reason for this parallelism is to ensure that the probability within each block is correctly tracked through each step of the computation process.
+The four 3D arrays $DT$, $DC$, $DD$ and $DP$ are all parallel. Create other arrays parallel to these. The reason for this parallelism is to ensure that the probability within each block is correctly tracked through each step of the computation process.
 
 The 3D arrays for the prices of tables and chairs are then written,
 
@@ -102,11 +102,11 @@ PT &= \frac{14*80}{DT + DD}\\
 PC &= \frac{24*45}{DC + 2 DD}
 \end{align*}
 
-where the sums, $DT+DD$ and $DC + 2DD$, are computed element-wise as well as the reciprocal functions. The result is that $PT$ and $PC$ are 3D arrays of size $Nt*Nc*Nd$ and are parallel to the demand and demand probability arrays. Note in particular that the price arrays $PT$ and $PC$ are not random variables. We will describe below how they may be converted to random variable form. This is possible because values of prices are located at vertices of a block of probability distribution and the value of the probability is uniformly distributed within that block in the 3D array $DP$.
+where the sums, $DT+DD$ and $DC + 2DD$, are computed element-wise as well as the reciprocal functions. The result is that $PT$ and $PC$ are 3D arrays of size $Nt*Nc*Nd$ and are parallel to the demand and demand probability arrays. Note in particular that the price arrays $PT$ and $PC$ are not random variables. They may be converted to random variable form as detailed below. This is possible because values of prices are located at vertices of a block of probability distribution and the value of the probability is uniformly distributed within that block in the 3D array $DP$.
 
 Now that input prices are established for the manufacturer optimization may be applied to decide what combination of tables and chairs to produce. In this example the optimization is computed exhaustively and the demand space is readily paritioned into three output cases $A$, $B$ and $C$. 
 
-Consider that each point in the 3D demand array represents a particular choice of input values that has associated with it two particular prices, one for tables and the other for chairs. We have already determined the rule for choosing each output case. We know, for example, that if $\frac{2}{3}Pt < Pc$ then output $A$ will be selected and similar rules apply for outputs $B$ and $C$. This means that for each point in the 3D demand space a Boolean value $1$ or $0$ can be assigned where $1$ means that point has an associated price for chairs that is larger then two-thirds that of tables. A parallel 3D array of Boolean values called a \emph{mask} based on the optimized output selection rules results. Let,
+Consider that each point in the 3D demand array represents a particular choice of input values that has associated with it two particular prices, one for tables and the other for chairs. It is known, for example, that if $\frac{2}{3}Pt < Pc$ then output $A$ will be selected and similar rules apply for outputs $B$ and $C$. This means that for each point in the 3D demand space a Boolean value $1$ or $0$ can be assigned where $1$ means that point has an associated price for chairs that is larger then two-thirds that of tables. A parallel 3D array of Boolean values called a \emph{mask} based on the optimized output selection rules results. Let,
 
 \begin{align*}
 MA &= \frac{2}{3}PT < PC\\
@@ -171,7 +171,7 @@ The three output random variables $Ra$, $Rb$ and $Rc$ are mutually exclusive and
 R = \{Rx, Rap + Rbp + Rcp\}
 \end{align*}
 
-It remains to describe how to fill in the probability arrays $Rap$, $Rbp$ and $Rcp$. We will describe the process for $Rap$ since it is the same for the others.
+It remains to describe how to fill in the probability arrays $Rap$, $Rbp$ and $Rcp$. The process for $Rap$ is the same for the others.
 
 Given the (big) output revenue 3D array $RA$, its associated mask $MA$, the associated 3D probability array $DP$ and the 1D revenue partition $Rx$ the zero-valued 1D probability array $Rap$ may be created using the following steps. 
 
@@ -205,7 +205,7 @@ For the software prototype version of this example it is assumed that the 3D blo
 h_{tcd} = \frac{DP_{tcd}}{max_{tcd} - max_{tcd}}
 \end{align*}
 
-where it is assumed that $min_{tcd} < max_{tcd}$. We will address special cases such as when $min_{tcd}$ and $max_{tcd}$ are equal below. Continuing with the general case the uniform probability density $h_{tcd}$ is allocated to the revenue probability array $Rap$ recalling that $Rap$ is delimited by the partition array $Rx$. Referring to figure \ref{fig:line_projection},
+where it is assumed that $min_{tcd} < max_{tcd}$. The special cases when $min_{tcd}$ and $max_{tcd}$ are equal will be detailed below. Continuing with the general case the uniform probability density $h_{tcd}$ is allocated to the revenue probability array $Rap$ recalling that $Rap$ is delimited by the partition array $Rx$. Referring to figure \ref{fig:line_projection},
 
 \begin{figure}
   \centering
@@ -232,7 +232,7 @@ h_{tcd} = \frac{3}{8}\frac{DP_{tcd}}{max_{tcd} - max_{tcd}}
 
 If it happened that $min_{tcd} = max_{tcd}$ either because all the valid vertices have the same revenue value or there is only one valid vertex for the $(t,c,d)$ block then the corresponding partition element is located for the $Rap$ array and its value is incremented with the available probability for that block. If it happens that $min_{tcd} = max_{tcd}$ equals an $Rx$ partition endpoint then the available block probability is halved and allocated to the adjacent partition intervals.
 
-We perform the above operations for each output case and combine them into the full revenue random variable and show the result in figure \ref{fig:ABC_4}. The horizontal axis is dollars of revenue and vertical axis is probability density as usual for random variable graphs. We notice that the median value is roughly \$2200 because of careful choice of demand inputs and the demand-to-price functional relationship. 
+Perform the above operations for each output case and combine them into the full revenue random variable and show the result in figure \ref{fig:ABC_4}. The horizontal axis is dollars of revenue and vertical axis is probability density as usual for random variable graphs. Notice that the median value is roughly \$2200 because of careful choice of demand inputs and the demand-to-price functional relationship. 
 
 %law of one price
 
@@ -262,7 +262,7 @@ We perform the above operations for each output case and combine them into the f
 
 Notable features of the optimized revenue in any panel of figure \ref{fig:ABC_4} is that no matter what happens with the projected demand there is a non-zero minimum revenue (about \$300), a strongly likelihood of earning about \$2200 and significant possibility of earning considerably more than the median \$2200.
 
-We use the machinery developed above to convert the 3D price arrays to random variables. Since there is no optimization involved in computing prices there is no need to generate masks. Since some information is available about the range of prices to expect price partitions may be chosen directly. In this case each price is partitioned into regularly spaced intervals from 0 to \$150. The 3D probability arrays are projected onto the price partitions and the result for each price random variable is shown in figure \ref{fig:tcd_prices}. Notice that, by design, the price of chairs is has a median price of about \$45 and that of tables is about \$80 which corresponds with the sharp version of the tables and chairs example. 
+Use the machinery developed above to convert the 3D price arrays to random variables. Since there is no optimization involved in computing prices there is no need to generate masks. Since some information is available about the range of prices to expect price partitions may be chosen directly. In this case each price is partitioned into regularly spaced intervals from 0 to \$150. The 3D probability arrays are projected onto the price partitions and the result for each price random variable is shown in figure \ref{fig:tcd_prices}. Notice that, by design, the price of chairs is has a median price of about \$45 and that of tables is about \$80 which corresponds with the sharp version of the tables and chairs example. 
 
 \begin{figure}
   \centering
@@ -282,11 +282,11 @@ In this section the tables and chairs is revisited example with the same three d
 
 The problem with three 3D demand arrays, $DT$, $DC$ and  $DD$ is now revisted. The associated 3D probability array $DP$ is also available. Using the same formulas as before for finding the (correlated) prices of tables and chairs the two 3D price arrays $PT$ and $PC$ respectively follow. 
 
-Each 3D price array may be projected onto a price partition and produced random variable representations of the two prices in figure \ref{fig:tcd_prices}. We choose the same price partitions as before, evenly space intervals from \$0 to \$150. This choice allows for comparable results with those obtained previously.
+Each 3D price array may be projected onto a price partition and produced random variable representations of the two prices in figure \ref{fig:tcd_prices}. Choose the same price partitions as before, evenly space intervals from \$0 to \$150. This choice allows for comparable results with those obtained previously.
 
-Our two price partitions, for $PT$ and $PC$, describe a 2D partition of the $(Pc,Pt)$-space. If the number of points in each price partition is $Np$ then a 2D array of size $Np^2$ is created and initialized with zero values.
+The two price partitions, for $PT$ and $PC$, describe a 2D partition of the $(Pc,Pt)$-space. If the number of points in each price partition is $Np$ then a 2D array of size $Np^2$ is created and initialized with zero values.
 
-We then realize that our two 3D price arrays $PT$ and $PC$ together describe a 3D lattice of pairs of prices at each vertex surrounding a uniform distribution of probability described by the 3D probability array $DP$. The 8 vertices of each probability block, each containing the two price values, are projected onto the two dimensional $(Pc, Pt)$-space. This the 2D analog of our 1D procedure for finding each marginal price random variable by projecting each price block for $PT$ or $PC$ onto the corresponding one dimensional price line. Figure \ref{fig:ptc_rectangle} shows an example of price block vertex projection. 
+Notice that the two 3D price arrays $PT$ and $PC$ together describe a 3D lattice of pairs of prices at each vertex surrounding a uniform distribution of probability described by the 3D probability array $DP$. The 8 vertices of each probability block, each containing the two price values, are projected onto the two dimensional $(Pc, Pt)$-space. This the 2D analog of the 1D procedure for finding each marginal price random variable by projecting each price block for $PT$ or $PC$ onto the corresponding one dimensional price line. Figure \ref{fig:ptc_rectangle} shows an example of price block vertex projection. 
 
 \begin{figure}
   \centering
@@ -298,7 +298,7 @@ We then realize that our two 3D price arrays $PT$ and $PC$ together describe a 3
 
 Since the cluster of vertex projections in figure \ref{fig:ptc_rectangle} indicate the projection of the 3D price probability block onto the 2D joint price partition the block probability must be allocated accordingly. 
 
-Assuming that the cluster of vertex projections represent the limits of the block projection the convex hull of these points may be found using an algorithm such as the Graham Scan as described in a textbook of computer algorithms such as Corman \cite{corman09}. We then assume the block probability is distributed uniformly over the interior region of the convex hull and apportion it accordingly to the partition rectangles of the 2D price distribution, called $JP$. Figure \ref{fig:ptc_rectangle_convex} shows the convex hull of the projected vertices. The heavy outline of joint price rectangles shows the limits of affected rectangles. Let $p$ be the probability of the projected block and $a$ the area of the convexregion, then $h = p/a$ is the probability density. The portion of probability allocated to any given rectangle in the outlined region is $h$ times the area of the rectangle intersecting the convex region.
+Assuming that the cluster of vertex projections represent the limits of the block projection the convex hull of these points may be found using an algorithm such as the Graham Scan as described in a textbook of computer algorithms such as Corman \cite{corman09}. Assume the block probability is distributed uniformly over the interior region of the convex hull and apportion it accordingly to the partition rectangles of the 2D price distribution, called $JP$. Figure \ref{fig:ptc_rectangle_convex} shows the convex hull of the projected vertices. The heavy outline of joint price rectangles shows the limits of affected rectangles. Let $p$ be the probability of the projected block and $a$ the area of the convexregion, then $h = p/a$ is the probability density. The portion of probability allocated to any given rectangle in the outlined region is $h$ times the area of the rectangle intersecting the convex region.
 
 \begin{figure}
   \centering
@@ -308,7 +308,7 @@ Assuming that the cluster of vertex projections represent the limits of the bloc
   \label{fig:ptc_rectangle_convex}
 \end{figure}
 
-The tables and chairs example has over 5 million blocks to project so a complex computation of multiple rectangle intersections with convex regions associated with each block is avoided for the prototype code. A simpler, though less accurate, approach is shown in figure \ref{fig:ptc_rectange_rectangle}. The heavy outline bounding box represents the $Pt$ and $Pc$ partition limits bounding the block vertex cluster. The shaded inner rectangle represents the rectangular limits of the cluster points. We calculate the probability density of the block probability if distributed uniformly over the inner shaded rectangle and distribute this by area over each intersecting price rectangle. 
+The tables and chairs example has over 5 million blocks to project so a complex computation of multiple rectangle intersections with convex regions associated with each block is avoided for the prototype code. A simpler, though less accurate, approach is shown in figure \ref{fig:ptc_rectange_rectangle}. The heavy outline bounding box represents the $Pt$ and $Pc$ partition limits bounding the block vertex cluster. The shaded inner rectangle represents the rectangular limits of the cluster points. Calculate the probability density of the block probability as if distributed uniformly over the inner shaded rectangle and distribute this by area over each intersecting price rectangle. 
 
 \begin{figure}
   \centering
@@ -318,7 +318,7 @@ The tables and chairs example has over 5 million blocks to project so a complex 
   \label{fig:ptc_rectange_rectangle}
 \end{figure}
 
-The results of the calculations of our prototype code for the joint probability distribution of the two correlated prices is shown in figure \ref{fig:Ptc}. Be aware that the origin is located in the upper-left corner of the graph. The $x$ and $y$ axis are prices of tables and chairs respectively and the vertical axis is probability density.
+The results of the calculations of the prototype code for the joint probability distribution of the two correlated prices is shown in figure \ref{fig:Ptc}. Be aware that the origin is located in the upper-left corner of the graph. The $x$ and $y$ axis are prices of tables and chairs respectively and the vertical axis is probability density.
 \begin{figure}
   \centering
   \includegraphics[width=120mm]{Images/Ptc.eps}
@@ -327,7 +327,7 @@ The results of the calculations of our prototype code for the joint probability 
   \label{fig:Ptc}
 \end{figure}
 
-An top view of the joint probability price distribution is shown figure \ref{fig:Ptc_flat}. We compare this figure to our original suggestion of the joint probability distribution of prices in figure \ref{fig:tc_joint_prices}. 
+An top view of the joint probability price distribution is shown figure \ref{fig:Ptc_flat}. Compare this figure to the original suggestion of the joint probability distribution of prices in figure \ref{fig:tc_joint_prices}. 
 
 \begin{figure}
   \centering
@@ -361,7 +361,7 @@ In the prototype the 2D array expression $Qtc$ is formed as,
 Qtc = \frac{PC_2}{PT_2}
 \end{align*}
 
-as the element-wise quotient of the two 2D price arrays. We notice that $Qtc$ together with the $JP$ form an improper form two-dimensional random variable, a non-standard usage of the expression. If a 1D partition is chosen for $Qtc$ the $\{Qtc, JP\}$ pair can be projected onto this partition and find a proper-form random variable, called $qtc$. This case is addressable by choosing the special partition,
+as the element-wise quotient of the two 2D price arrays. Notice that $Qtc$ together with the $JP$ form an improper form two-dimensional random variable, a non-standard usage of the expression. If a 1D partition is chosen for $Qtc$ the $\{Qtc, JP\}$ pair can be projected onto this partition and find a proper-form random variable, called $qtc$. This case is addressable by choosing the special partition,
 
 \begin{align*}
 Xqtc = (-\infty, 0, \frac{1}{4}, \frac{2}{3}, 1, \infty)
@@ -412,7 +412,7 @@ The directed graph for the tables and chairs example with unknown prices and res
   \label{fig:tcpr_directed_graph}
 \end{figure}
 
-While the conditions present when entering a state are significant, the tableau in each state is denumerable as. We refer to tables \ref{tab:pr1001}, \ref{tab:pr1010}, \ref{tab:pr0101}, \ref{tab:pr0110} and \ref{tab:pr1100}. 
+While the conditions present when entering a state are significant, the tableau in each state is denumerable as. Refer to tables \ref{tab:pr1001}, \ref{tab:pr1010}, \ref{tab:pr0101}, \ref{tab:pr0110} and \ref{tab:pr1100}. 
 
 \begin{table}
 \centering
@@ -499,7 +499,7 @@ Revenue & $p_c$    & $p_t$    & 0     & 0     &\\
   \label{tab:pr1100}
 \end{table}
 
-Starting in state $0011$ and following the simplex two-phase decision and first compare the two prices $p_c$ and $p_t$. We are assuming for clarity, as before, that since it is intended to replace $p_c$ and $p_t$ with continuous random variables the probability of equality is zero. In practice the possibility of equality must be checked. The initial comparisons are,
+Starting in state $0011$ and following the simplex two-phase decision and first compare the two prices $p_c$ and $p_t$. Assuming for clarity, as before, that since it is intended to replace $p_c$ and $p_t$ with continuous random variables the probability of equality is zero. In practice the possibility of equality must be checked. The initial comparisons are,
 
 \begin{align*}
 argmax(p_c, p_t)\\
@@ -513,15 +513,15 @@ where the $> 0$ condition refers to the requirement that each operand be positiv
 
 In many cases the first or second phase of the simplex algorithm decision is disqualified since it is either non-positive or contradicts a previous assumption. 
 
-Since simplex states may be re-entered a computer algorithm can take advantage of this possibility and cache, rather than recompute, certain elements such as the simplex tableau. Notice the comparison of linear combinations of either price or resource variables with zero, at each decision potin, in the sense that the expression $a < b$ can be rewritten as $0 < b - a$. We have seen in the previous version of the tables and chairs example that each conditional statement results in a filter on the input space so that the simplex algorithm may be viewed as a filtration process. The task of the RICO modeling environment is to determine what portion of the input space passes through each facet of the simplex filtration process to a terminal node and with what probability.
+Since simplex states may be re-entered a computer algorithm can take advantage of this possibility and cache, rather than recompute, certain elements such as the simplex tableau. Notice the comparison of linear combinations of either price or resource variables with zero, at each decision potin, in the sense that the expression $a < b$ can be rewritten as $0 < b - a$. Recall from the previous version of the tables and chairs example that each conditional statement results in a filter on the input space so that the simplex algorithm may be viewed as a filtration process. The task of the RICO modeling environment is to determine what portion of the input space passes through each facet of the simplex filtration process to a terminal node and with what probability.
 
 \section{Beyond the Tables and Chairs Example}
 
-In the tables and chairs example correlated random inputs for prices were chosen and it was argued that correlated random inputs could have been chosen for resources instead. We notice in the simplex algorithm the transition decision from one state to the other involves computing the maximum positive revenue impact in the case of prices and then the minimum positive resource impact. These two choices correspond to the two facets of a table pivot as explained above. 
+In the tables and chairs example correlated random inputs for prices were chosen and it was argued that correlated random inputs could have been chosen for resources instead. Notice in the simplex algorithm the transition decision from one state to the other involves computing the maximum positive revenue impact in the case of prices and then the minimum positive resource impact. These two choices correspond to the two facets of a table pivot as explained above. 
 
 It remains to be investigated what happens to this example when some or all of the values of $A$ are unknown. In this example the significance of unknown $A$ values is that the manufacturer is unsure how many resources are consumed by each product.
 
-As explained by Bellman \cite{bellman03}, the number of solution states, not to mention the number of internal simplex algorithm states, becomes computationally intractable even for modest problems. We see this for ourselves if the problem has 100 variables and 100 constraints then the number of simplex states is at least $\mathbb{Ch}(200,100) = 9.05\times10^{58}$. The reference implementation of the AB32 model has many hundreds of variables and several thousand constraint equations. 
+As explained by Bellman \cite{bellman03}, the number of solution states, not to mention the number of internal simplex algorithm states, becomes computationally intractable even for modest problems. Notice that if the problem has 100 variables and 100 constraints then the number of simplex states is at least $\mathbb{Ch}(200,100) = 9.05\times10^{58}$. The reference implementation of the AB32 model has many hundreds of variables and several thousand constraint equations. 
 
 A way to proceed is for the RICO modeling environment to partially explore the simplex directed graph. The transition from one state to the next using the simplex algorithm involves finding the maximum of a set of linear combinations of prices, in the context of the tables and chairs example, followed by finding the minimum of a set of linear combinations of resource limits assuming the $A$ values are fixed. Each \emph{choice element} is a linear combination of random variables which are themselves random variables. Assuming that there are three choice elements denoted $X$, $Y$ and $Z$ then the decision,
 
