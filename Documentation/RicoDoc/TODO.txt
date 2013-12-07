@@ -3,7 +3,7 @@ DONE - Update tcpr_directed_graph.svg to non-latex labels.
 DONE - Add full sequence of Monte Carlo convergences in Tables and Chairs example TC_RevenueXXX
        1K, 10K, 100K, 1M
 RICO - Remove "PHoX" references
-TODO - Remove "we/our" statements from Tables and Chairs chapter and Appendix
+DONE - Remove "we/our" statements from Tables and Chairs chapter and Appendix
 DONE - Split Tables and Chairs into Chapter and Appendix
 DONE - Bring Numeric Computation and Correlated Operations to own chapters from Appendix
 ^^^ 2/20/2013 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
