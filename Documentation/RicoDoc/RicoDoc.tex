@@ -1,9 +1,9 @@
-%% right-side equation numbering, 12 point font, print one-sided 
-%\documentclass[reqno,12pt,oneside]{report} 
+%% right-side equation numbering, 12 point font, print one-sided
+%\documentclass[reqno,12pt,oneside]{report}
 \documentclass[12pt,letterpaper,oneside]{book}
 
 % Use my personal style sheet
-%\usepackage{tomf}         
+%\usepackage{tomf}
 
 \usepackage{color}
 \usepackage{times}
@@ -38,7 +38,7 @@
 \newtheorem{remark}[theorem]{Remark}
 
 % Numbers theorems "x.y" where x is the section number, y is the theorem number
-\numberwithin{theorem}{chapter}     
+\numberwithin{theorem}{chapter}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \usepackage{listings}
@@ -47,8 +47,8 @@
 \definecolor{gray}{rgb}{0.5,0.5,0.5}
 \definecolor{mauve}{rgb}{0.58,0,0.82}
 
-\lstset{ 
-  backgroundcolor=\color{white},  % choose the background color; \usepackage{[x]color} 
+\lstset{
+  backgroundcolor=\color{white},  % choose the background color; \usepackage{[x]color}
   basicstyle=\footnotesize\ttfamily,       % the size of the fonts that are used for the code
   breakatwhitespace=false,        % sets if automatic breaks should only happen at whitespace
   breaklines=true,                % sets automatic line breaking
@@ -64,13 +64,13 @@
   numbers=none,                   % location of line-numbers; (none, left, right)
   numbersep=5pt,                  % how far the line-numbers are from the code
   numberstyle=\tiny\color{gray},  % the style that is used for the line-numbers
-  rulecolor=\color{black},        % if not set, the frame-color may be changed on line-breaks  
+  rulecolor=\color{black},        % if not set, the frame-color may be changed on line-breaks
   showstringspaces=false,         % underline spaces within strings only
   showtabs=false,                 % show tabs within strings adding particular underscores
   stepnumber=2,                   % the step between two line-numbers. If 1, each line numbered
   stringstyle=\color{mauve},      % string literal style
   tabsize=2,                      % sets default tabsize to 2 spaces
-  title=\lstname                  % show the filename of files included with \lstinputlisting; 
+  title=\lstname                  % show the filename of files included with \lstinputlisting;
 }
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -137,12 +137,12 @@
 %\label{Abstract}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%\startthechapters 
+%\startthechapters
 % The individual files for each of the chapters are put here.
 % Save each chapter of your thesis to a seperate tex file
 % and then use the \input command to include this file in your
-% thesis.  For instance you can save a file to "intro.tex" and 
-% then type \input{intro}. 
+% thesis.  For instance you can save a file to "intro.tex" and
+% then type \input{intro}.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % use \input   for non-page-break % and \include for page-break
 
@@ -170,7 +170,11 @@
 \input{tables_and_chairs_sharp}
 \chapter{Symbolic Expression Transformation}
 \input{expression_transformation}
-
+\chapter{Senstivity}
+\input{sensitivity_intro}
+\input{sensitivity_body}
+\chapter{Correlation}
+\input{correlation_body}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \bibliographystyle{plain}
