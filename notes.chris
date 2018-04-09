@@ -1,0 +1,5 @@
+5/8/2017
+
+Can't compile due to issue with UnitTest++ and x86-64 arch. libUnitTest++.a exists in rico/src/UnitTest++. A lot of work to remove all unit tests. Need to try UnitTest++ from source.
+
+
